@@ -1,0 +1,155 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ULTRA MILK</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: black;
+            color: white;
+            font-family: sans-serif;
+            touch-action: none;
+        }
+        #canvas {
+            display: block;
+            background: #222;
+        }
+        #loadingOverlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: black;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+        #title {
+            font-size: 3em;
+            font-weight: bold;
+            color: white;
+            margin-bottom: 20px;
+        }
+        #progressText {
+            margin-top: 10px;
+        }
+        .hud {
+            position: absolute;
+            font-size: 16px;
+            z-index: 5;
+        }
+        #bottomLeft { bottom: 10px; left: 10px; }
+        #bottomRight { bottom: 10px; right: 10px; }
+        #topLeft { top: 10px; left: 10px; }
+
+        .button {
+            position: absolute;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid white;
+            border-radius: 10px;
+            padding: 10px;
+            font-size: 16px;
+            z-index: 20;
+        }
+        #btnMove { left: 10px; bottom: 80px; }
+        #btnFire { right: 10px; bottom: 80px; }
+        #btnSwitch { right: 10px; bottom: 160px; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div id="loadingOverlay">
+        <div id="title">ULTRA MILK</div>
+        <progress id="progressBar" value="0" max="100" style="width: 80%; height: 30px;"></progress>
+        <div id="progressText">Milking the enemies…</div>
+    </div>
+
+    <div id="bottomLeft" class="hud">HP: 100 | ULT: 0%</div>
+    <div id="bottomRight" class="hud">[2] Shotgun</div>
+    <div id="topLeft" class="hud">
+        <button onclick="saveGame()">Save</button>
+        <button onclick="loadGame()">Load</button>
+    </div>
+
+    <!-- Mobile touch buttons -->
+    <div id="btnMove" class="button">Move</div>
+    <div id="btnFire" class="button">Fire</div>
+    <div id="btnSwitch" class="button">Switch</div>
+
+    <script>
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+
+        // Fake loading sequence
+        let loadProgress = 0;
+        const loadingMessages = [
+            "Pasteurizing shaders…",
+            "Churning the shotgun…",
+            "Milking the enemies…",
+            "Homogenizing frames…",
+            "Refrigerating physics…"
+        ];
+        let msgIndex = 0;
+
+        const progressBar = document.getElementById("progressBar");
+        const progressText = document.getElementById("progressText");
+        const loadingOverlay = document.getElementById("loadingOverlay");
+
+        const loadingInterval = setInterval(() => {
+            loadProgress += 2 + Math.random() * 4;
+            if (loadProgress >= 100) {
+                loadProgress = 100;
+                clearInterval(loadingInterval);
+                loadingOverlay.style.display = "none";
+                startGame();
+            }
+            progressBar.value = loadProgress;
+            msgIndex = (msgIndex + 1) % loadingMessages.length;
+            progressText.textContent = loadingMessages[msgIndex];
+        }, 300);
+
+        function startGame() {
+            // Basic render loop
+            function render() {
+                ctx.fillStyle = "#222";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = "white";
+                ctx.font = "40px sans-serif";
+                ctx.fillText("Welcome to ULTRA MILK", canvas.width/2 - 200, canvas.height/2);
+                ctx.fillText("Game is running!", canvas.width/2 - 150, canvas.height/2 + 50);
+
+                requestAnimationFrame(render);
+            }
+            render();
+        }
+
+        function saveGame() {
+            localStorage.setItem("ultraMilkSave", JSON.stringify({ hp: 100, weapon: 2, ult: 0 }));
+            alert("Game saved!");
+        }
+        function loadGame() {
+            const data = JSON.parse(localStorage.getItem("ultraMilkSave"));
+            if (data) {
+                alert("Game loaded: HP=" + data.hp + ", Weapon=" + data.weapon);
+            } else {
+                alert("No save found.");
+            }
+        }
+    </script>
+</body>
+</html>
