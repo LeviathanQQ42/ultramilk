@@ -55,7 +55,8 @@
       msgIndex++;
     }, 1000);
 
-    window.onload = () => {
+    // Wait 2 seconds before starting game
+    setTimeout(() => {
       document.getElementById("title").style.display = "none";
       document.getElementById("loading").style.display = "none";
 
@@ -110,7 +111,7 @@
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
       });
-    };
+    }, 2000); // Delay start for splash screen
   </script>
 </body>
 </html>
