@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ULTRA MILK</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      background: black;
+      font-family: Arial, sans-serif;
+    }
+
+    #title {
+      position: absolute;
+      top: 30%;
+      width: 100%;
+      text-align: center;
+      font-size: 3em;
+      font-weight: bold;
+      color: white;
+      z-index: 10;
+    }
+
+    #loading-container {
+      position: absolute;
+      top: 50%;
+      width: 100%;
+      text-align: center;
+      z-index: 10;
+    }
+
+    #loading-bar {
+      width: 60%;
+      height: 20px;
+      background: #444;
+      margin: 0 auto;
+      border: 2px solid white;
+      position: relative;
+    }
+
+    #loading-progress {
+      height: 100%;
+      background: white;
+      width: 0%;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    #crosshair {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 4px;
+      height: 4px;
+      margin-left: -2px;
+      margin-top: -2px;
+      background-color: white;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div id="title">ULTRA MILK</div>
+  <div id="loading-container">
+    <div id="loading-bar"><div id="loading-progress"></div></div>
+  </div>
+  <div id="crosshair"></div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
+  <script>
+    // Simulate loading
+    let progress = 0;
+    const loadingInterval = setInterval(() => {
+      progress += 1;
+      document.getElementById("loading-progress").style.width = progress + "%";
+      if (progress >= 100) {
+        clearInterval(loadingInterval);
+        startGame();
+      }
+    }, 30);
+
+    function startGame() {
+      document.getElementById("title").style.display = "none";
+      document.getElementById("loading-container").style.display = "none";
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87CEEB); // Sky blue
+
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 2, 5);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      // Ground plane
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(100, 100),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      scene.add(ground);
+
+      // WASD movement
+      const keys = {};
+      window.addEventListener("keydown", (e) => keys[e.key.toLowerCase()] = true);
+      window.addEventListener("keyup", (e) => keys[e.key.toLowerCase()] = false);
+
+      function animate() {
+        requestAnimationFrame(animate);
+        if (keys["w"]) camera.position.z -= 0.1;
+        if (keys["s"]) camera.position.z += 0.1;
+        if (keys["a"]) camera.position.x -= 0.1;
+        if (keys["d"]) camera.position.x += 0.1;
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    }
+  </script>
+</body>
+</html>
