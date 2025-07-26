@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ultra Milk</title>
+  <style>
+    html, body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+      color: white;
+      font-family: monospace;
+    }
+    #gameCanvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      background-color: black;
+    }
+    #debugBox {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      background: rgba(0,0,0,0.75);
+      color: red;
+      padding: 8px;
+      max-width: 100%;
+      font-size: 12px;
+      z-index: 1000;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <div id="debugBox">Loading...</div>
+
+  <script>
+    const debugBox = document.getElementById('debugBox');
+    function logError(message) {
+      debugBox.innerText = message;
+    }
+
+    window.onerror = function (msg, url, lineNo, columnNo, error) {
+      logError(`ERROR: ${msg} at ${lineNo}:${columnNo}`);
+      return false;
+    };
+
+    try {
+      // Simulate your game logic here
+      // Replace this with your full init/render/game logic
+      const gl = document.getElementById("gameCanvas").getContext("webgl");
+      if (!gl) throw new Error("WebGL not supported or failed to initialize");
+
+      debugBox.innerText = "WebGL loaded. Starting Ultra Milk...";
+      // Now load and start your real game engine logic here
+    } catch (e) {
+      logError(e.toString());
+    }
+  </script>
+</body>
+</html>
