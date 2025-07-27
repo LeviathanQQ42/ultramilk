@@ -3,105 +3,174 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Ultra Milk</title>
+  <title>ULTRA MILK</title>
   <style>
     html, body {
       margin: 0;
-      padding: 0;
       overflow: hidden;
       background: black;
-      color: white;
       font-family: Arial, sans-serif;
     }
-    #loading {
+    canvas {
+      display: block;
+    }
+    #crosshair {
       position: absolute;
-      top: 50%;
       left: 50%;
+      top: 50%;
+      width: 8px;
+      height: 8px;
+      background: white;
+      border-radius: 50%;
       transform: translate(-50%, -50%);
-      text-align: center;
+      z-index: 10;
     }
-    #gameCanvas {
-      width: 100vw;
-      height: 100vh;
-      display: none;
-    }
-    #errorBox {
+    #joystick {
       position: absolute;
-      bottom: 0;
-      width: 100%;
-      color: red;
-      background: rgba(0, 0, 0, 0.8);
-      font-size: 14px;
-      padding: 4px;
-      box-sizing: border-box;
+      bottom: 20px;
+      left: 20px;
+      width: 100px;
+      height: 100px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      touch-action: none;
+    }
+    #stick {
+      width: 50px;
+      height: 50px;
+      background: white;
+      border-radius: 50%;
+      position: absolute;
+      left: 25px;
+      top: 25px;
     }
   </style>
 </head>
 <body>
-  <div id="loading">
-    <h1>Ultra Milk</h1>
-    <p id="statusText">Pasteurizing shaders…</p>
-  </div>
-  <canvas id="gameCanvas"></canvas>
-  <div id="errorBox"></div>
+  <div id="crosshair"></div>
+  <div id="joystick"><div id="stick"></div></div>
 
-  <script>
-    const loadingMessages = [
-      "Pasteurizing shaders…",
-      "Churning the shotgun…",
-      "Milking the enemies…",
-      "Homogenizing levels…",
-      "Boiling the backrooms…"
-    ];
-    let msgIndex = 0;
-    setInterval(() => {
-      document.getElementById("statusText").innerText = loadingMessages[msgIndex % loadingMessages.length];
-      msgIndex++;
-    }, 1500);
+  <script type="module">
+    import * as THREE from "https://cdn.skypack.dev/three@0.150.1";
 
-    async function startGame() {
-      try {
-        const canvas = document.getElementById("gameCanvas");
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("2D context not supported");
+    let camera, scene, renderer;
+    let keys = {};
+    let velocity = new THREE.Vector3();
+    let moveSpeed = 0.1;
 
-        // Simulate loading
-        await new Promise(r => setTimeout(r, 3000));
+    const touch = {
+      active: false,
+      dx: 0,
+      dy: 0
+    };
 
-        document.getElementById("loading").style.display = "none";
-        canvas.style.display = "block";
+    init();
+    animate();
 
-        // Draw basic text
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "48px Arial";
-        ctx.fillText("Welcome to Ultra Milk", 50, 100);
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb); // sky blue
 
-        // Add basic player box
-        let player = { x: 100, y: 200, w: 50, h: 50, color: "#00f" };
-        function drawPlayer() {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.fillStyle = player.color;
-          ctx.fillRect(player.x, player.y, player.w, player.h);
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.y = 1.6;
+
+      const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+      scene.add(light);
+
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(1000, 1000),
+        new THREE.MeshStandardMaterial({ color: 0x228B22 })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      scene.add(ground);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+      document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+      document.body.addEventListener("click", () => {
+        if (document.pointerLockElement !== document.body) {
+          document.body.requestPointerLock();
         }
+      });
 
-        window.addEventListener("keydown", e => {
-          if (e.key === "ArrowRight") player.x += 10;
-          if (e.key === "ArrowLeft") player.x -= 10;
-          if (e.key === "ArrowUp") player.y -= 10;
-          if (e.key === "ArrowDown") player.y += 10;
-          drawPlayer();
-        });
+      document.addEventListener("mousemove", e => {
+        if (document.pointerLockElement === document.body) {
+          camera.rotation.y -= e.movementX * 0.002;
+          camera.rotation.x -= e.movementY * 0.002;
+          camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
+        }
+      });
 
-        drawPlayer();
-
-      } catch (err) {
-        document.getElementById("errorBox").innerText = err.message;
-      }
+      setupTouchControls();
     }
 
-    startGame();
+    function setupTouchControls() {
+      const joystick = document.getElementById("joystick");
+      const stick = document.getElementById("stick");
+
+      let startX = 0, startY = 0;
+
+      joystick.addEventListener("touchstart", e => {
+        const touchPoint = e.touches[0];
+        startX = touchPoint.clientX;
+        startY = touchPoint.clientY;
+        touch.active = true;
+      });
+
+      joystick.addEventListener("touchmove", e => {
+        const touchPoint = e.touches[0];
+        const dx = touchPoint.clientX - startX;
+        const dy = touchPoint.clientY - startY;
+        touch.dx = dx / 50;
+        touch.dy = dy / 50;
+        stick.style.transform = `translate(${dx}px, ${dy}px)`;
+      });
+
+      joystick.addEventListener("touchend", () => {
+        touch.active = false;
+        touch.dx = 0;
+        touch.dy = 0;
+        stick.style.transform = `translate(0px, 0px)`;
+      });
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      let direction = new THREE.Vector3();
+
+      if (touch.active) {
+        direction.x -= touch.dx;
+        direction.z -= touch.dy;
+      } else {
+        if (keys["w"]) direction.z -= 1;
+        if (keys["s"]) direction.z += 1;
+        if (keys["a"]) direction.x -= 1;
+        if (keys["d"]) direction.x += 1;
+      }
+
+      direction.normalize();
+
+      const angle = camera.rotation.y;
+      const sin = Math.sin(angle), cos = Math.cos(angle);
+      velocity.x = direction.x * cos - direction.z * sin;
+      velocity.z = direction.x * sin + direction.z * cos;
+
+      camera.position.x += velocity.x * moveSpeed;
+      camera.position.z += velocity.z * moveSpeed;
+
+      renderer.render(scene, camera);
+    }
   </script>
 </body>
 </html>
