@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ultra Milk</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+    }
+    #gameCanvas {
+      width: 100vw;
+      height: 100vh;
+      display: none;
+    }
+    #errorBox {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      color: red;
+      background: rgba(0, 0, 0, 0.8);
+      font-size: 14px;
+      padding: 4px;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <h1>Ultra Milk</h1>
+    <p id="statusText">Pasteurizing shaders…</p>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+  <div id="errorBox"></div>
+
+  <script>
+    const loadingMessages = [
+      "Pasteurizing shaders…",
+      "Churning the shotgun…",
+      "Milking the enemies…",
+      "Homogenizing levels…",
+      "Boiling the backrooms…"
+    ];
+    let msgIndex = 0;
+    setInterval(() => {
+      document.getElementById("statusText").innerText = loadingMessages[msgIndex % loadingMessages.length];
+      msgIndex++;
+    }, 1500);
+
+    async function startGame() {
+      try {
+        const canvas = document.getElementById("gameCanvas");
+        const gl = canvas.getContext("webgl");
+        if (!gl) throw new Error("WebGL not supported");
+
+        // Simulate game load
+        await new Promise(r => setTimeout(r, 3000));
+
+        document.getElementById("loading").style.display = "none";
+        canvas.style.display = "block";
+
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "48px Arial";
+        ctx.fillText("Welcome to Ultra Milk", 50, 100);
+      } catch (err) {
+        document.getElementById("errorBox").innerText = err.message;
+      }
+    }
+
+    startGame();
+  </script>
+</body>
+</html>
