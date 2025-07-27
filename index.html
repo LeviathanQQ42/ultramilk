@@ -3,174 +3,107 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>ULTRA MILK</title>
+  <title>Ultra Milk</title>
   <style>
     html, body {
       margin: 0;
+      padding: 0;
       overflow: hidden;
       background: black;
+      color: white;
       font-family: Arial, sans-serif;
     }
     canvas {
       display: block;
     }
-    #crosshair {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: 8px;
-      height: 8px;
-      background: white;
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 10;
-    }
-    #joystick {
-      position: absolute;
-      bottom: 20px;
-      left: 20px;
-      width: 100px;
-      height: 100px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 50%;
-      touch-action: none;
-    }
-    #stick {
-      width: 50px;
-      height: 50px;
-      background: white;
-      border-radius: 50%;
-      position: absolute;
-      left: 25px;
-      top: 25px;
-    }
   </style>
 </head>
 <body>
-  <div id="crosshair"></div>
-  <div id="joystick"><div id="stick"></div></div>
+<canvas id="gameCanvas"></canvas>
+<script type="module">
+  import * as THREE from 'https://cdn.skypack.dev/three@0.152.2';
 
-  <script type="module">
-    import * as THREE from "https://cdn.skypack.dev/three@0.150.1";
+  const canvas = document.getElementById('gameCanvas');
+  const renderer = new THREE.WebGLRenderer({ canvas });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x87CEEB); // sky blue
 
-    let camera, scene, renderer;
-    let keys = {};
-    let velocity = new THREE.Vector3();
-    let moveSpeed = 0.1;
+  const scene = new THREE.Scene();
 
-    const touch = {
-      active: false,
-      dx: 0,
-      dy: 0
-    };
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.y = 1.6;
 
-    init();
-    animate();
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(100, 100),
+    new THREE.MeshPhongMaterial({ color: 0x229933 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  scene.add(ground);
 
-    function init() {
-      scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x87ceeb); // sky blue
+  const light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(10, 10, 10);
+  scene.add(light);
 
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      camera.position.y = 1.6;
+  const ambient = new THREE.AmbientLight(0x404040);
+  scene.add(ambient);
 
-      const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
-      scene.add(light);
+  const crosshair = document.createElement("div");
+  crosshair.style.position = "absolute";
+  crosshair.style.top = "50%";
+  crosshair.style.left = "50%";
+  crosshair.style.width = "10px";
+  crosshair.style.height = "10px";
+  crosshair.style.marginLeft = "-5px";
+  crosshair.style.marginTop = "-5px";
+  crosshair.style.borderRadius = "50%";
+  crosshair.style.background = "white";
+  document.body.appendChild(crosshair);
 
-      const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(1000, 1000),
-        new THREE.MeshStandardMaterial({ color: 0x228B22 })
-      );
-      ground.rotation.x = -Math.PI / 2;
-      scene.add(ground);
+  // FPS controls (keyboard + mouse)
+  let yaw = 0;
+  let pitch = 0;
+  const pitchLimit = Math.PI / 2 - 0.1; // Clamp vertical rotation
 
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      document.body.appendChild(renderer.domElement);
+  const keys = {};
+  document.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+  document.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-      window.addEventListener("resize", () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-      });
-
-      document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-      document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
-
-      document.body.addEventListener("click", () => {
-        if (document.pointerLockElement !== document.body) {
-          document.body.requestPointerLock();
-        }
-      });
-
-      document.addEventListener("mousemove", e => {
-        if (document.pointerLockElement === document.body) {
-          camera.rotation.y -= e.movementX * 0.002;
-          camera.rotation.x -= e.movementY * 0.002;
-          camera.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.rotation.x));
-        }
-      });
-
-      setupTouchControls();
+  document.body.addEventListener('click', () => canvas.requestPointerLock());
+  document.addEventListener('mousemove', e => {
+    if (document.pointerLockElement === canvas) {
+      yaw -= e.movementX * 0.002;
+      pitch -= e.movementY * 0.002;
+      pitch = Math.max(-pitchLimit, Math.min(pitchLimit, pitch));
     }
+  });
 
-    function setupTouchControls() {
-      const joystick = document.getElementById("joystick");
-      const stick = document.getElementById("stick");
+  function animate() {
+    requestAnimationFrame(animate);
 
-      let startX = 0, startY = 0;
+    // Calculate direction based on yaw and pitch
+    const direction = new THREE.Vector3();
+    camera.rotation.set(pitch, yaw, 0);
+    camera.getWorldDirection(direction);
 
-      joystick.addEventListener("touchstart", e => {
-        const touchPoint = e.touches[0];
-        startX = touchPoint.clientX;
-        startY = touchPoint.clientY;
-        touch.active = true;
-      });
+    const speed = 0.1;
+    const forward = new THREE.Vector3(direction.x, 0, direction.z).normalize();
+    const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
 
-      joystick.addEventListener("touchmove", e => {
-        const touchPoint = e.touches[0];
-        const dx = touchPoint.clientX - startX;
-        const dy = touchPoint.clientY - startY;
-        touch.dx = dx / 50;
-        touch.dy = dy / 50;
-        stick.style.transform = `translate(${dx}px, ${dy}px)`;
-      });
+    if (keys['w']) camera.position.add(forward.clone().multiplyScalar(speed));
+    if (keys['s']) camera.position.add(forward.clone().multiplyScalar(-speed));
+    if (keys['a']) camera.position.add(right.clone().multiplyScalar(-speed));
+    if (keys['d']) camera.position.add(right.clone().multiplyScalar(speed));
 
-      joystick.addEventListener("touchend", () => {
-        touch.active = false;
-        touch.dx = 0;
-        touch.dy = 0;
-        stick.style.transform = `translate(0px, 0px)`;
-      });
-    }
+    renderer.render(scene, camera);
+  }
 
-    function animate() {
-      requestAnimationFrame(animate);
+  animate();
 
-      let direction = new THREE.Vector3();
-
-      if (touch.active) {
-        direction.x -= touch.dx;
-        direction.z -= touch.dy;
-      } else {
-        if (keys["w"]) direction.z -= 1;
-        if (keys["s"]) direction.z += 1;
-        if (keys["a"]) direction.x -= 1;
-        if (keys["d"]) direction.x += 1;
-      }
-
-      direction.normalize();
-
-      const angle = camera.rotation.y;
-      const sin = Math.sin(angle), cos = Math.cos(angle);
-      velocity.x = direction.x * cos - direction.z * sin;
-      velocity.z = direction.x * sin + direction.z * cos;
-
-      camera.position.x += velocity.x * moveSpeed;
-      camera.position.z += velocity.z * moveSpeed;
-
-      renderer.render(scene, camera);
-    }
-  </script>
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
 </body>
 </html>
