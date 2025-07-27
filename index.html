@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ULTRA MILK</title>
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      color: white;
+      font-family: sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      flex-direction: column;
+    }
+    #loadingBarContainer {
+      width: 80%;
+      height: 20px;
+      border: 2px solid white;
+      margin-top: 10px;
+    }
+    #loadingBar {
+      height: 100%;
+      width: 0%;
+      background: white;
+    }
+    #status {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>ULTRA MILK</h1>
+  <div id="loadingBarContainer">
+    <div id="loadingBar"></div>
+  </div>
+  <div id="status">Pasteurizing shaders...</div>
+  <script>
+    const messages = [
+      "Pasteurizing shaders...",
+      "Churning the shotgun...",
+      "Milking the enemies...",
+      "Homogenizing the horror...",
+      "Fermenting the lore...",
+      "Calcium loading..."
+    ];
+
+    let i = 0;
+    const loadingBar = document.getElementById('loadingBar');
+    const status = document.getElementById('status');
+
+    function updateLoading() {
+      if (i < 100) {
+        i++;
+        loadingBar.style.width = i + '%';
+        if (i % 20 === 0) {
+          status.textContent = messages[(i / 20) % messages.length];
+        }
+        requestAnimationFrame(updateLoading);
+      } else {
+        status.textContent = "Starting game...";
+        // Simulate game start delay
+        setTimeout(() => {
+          document.body.innerHTML = "<h1 style='color:white;'>Welcome to ULTRA MILK</h1>";
+        }, 1000);
+      }
+    }
+
+    updateLoading();
+  </script>
+</body>
+</html>
