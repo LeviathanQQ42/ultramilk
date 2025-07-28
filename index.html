@@ -7,129 +7,178 @@
   <style>
     html, body {
       margin: 0;
-      padding: 0;
       overflow: hidden;
       background: #000;
-      color: white;
-      font-family: sans-serif;
     }
     canvas {
       display: block;
     }
-    #ui {
+    #menu {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
+      background: rgba(0,0,0,0.8);
+      color: white;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      pointer-events: none;
-    }
-    #menu {
-      position: absolute;
-      top: 50%;
-      left: 20px;
-      transform: translateY(-50%);
-      pointer-events: auto;
+      padding: 4rem;
+      font-family: sans-serif;
     }
     #menu button {
       display: block;
-      margin: 10px 0;
-      padding: 10px;
-      font-size: 18px;
-      background: #444;
-      color: white;
-      border: none;
-      cursor: pointer;
+      margin: 1rem 0;
+      font-size: 2rem;
+      padding: 0.5rem 1rem;
     }
-    #settingsPanel {
+    #settingsMenu {
       position: absolute;
       top: 50%;
-      left: 20px;
-      transform: translateY(-50%);
+      left: 50%;
+      transform: translate(-50%, -50%);
       background: #111;
-      padding: 10px;
+      padding: 2rem;
+      border: 2px solid white;
       display: none;
       flex-direction: column;
-      pointer-events: auto;
+      gap: 1rem;
+      font-size: 1.2rem;
     }
-    #settingsPanel input[type=range] {
-      width: 200px;
-    }
-    #spinner {
-      width: 200px;
-      height: 200px;
-      pointer-events: none;
+    #settingsMenu input {
+      width: 100%;
     }
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas"></canvas>
-  <div id="ui">
-    <div id="menu">
-      <button id="startButton">Start</button>
-      <button id="settingsButton">Settings</button>
+  <div id="menu">
+    <div>
+      <button id="startBtn">Start</button>
+      <button id="settingsBtn">Settings</button>
     </div>
-    <div id="settingsPanel">
-      <label>Sensitivity</label>
-      <input type="range" id="sensitivitySlider" min="0.1" max="2.0" step="0.1" value="1.0">
-      <button id="saveSettings">Save</button>
+    <div>
+      <div id="milkman" style="width:200px;height:200px;background:white;animation:spin 5s linear infinite;"></div>
     </div>
-    <canvas id="spinner"></canvas>
   </div>
-  <script>
-    const startButton = document.getElementById('startButton');
-    const settingsButton = document.getElementById('settingsButton');
-    const settingsPanel = document.getElementById('settingsPanel');
-    const sensitivitySlider = document.getElementById('sensitivitySlider');
-    const saveSettings = document.getElementById('saveSettings');
+  <div id="settingsMenu">
+    <label>Sensitivity: <input id="sensitivity" type="range" min="0.1" max="2" step="0.1" value="0.5"></label>
+    <button onclick="closeSettings()">Close</button>
+  </div>
+  <script type="module">
+    import * as THREE from 'https://cdn.skypack.dev/three@0.160.0';
+    import { PointerLockControls } from 'https://cdn.skypack.dev/three/examples/jsm/controls/PointerLockControls.js';
 
-    let sensitivity = 1.0;
+    let scene, camera, renderer, controls, velocity = new THREE.Vector3(), direction = new THREE.Vector3();
+    let canJump = false, onGround = false, clock = new THREE.Clock(), sensitivity = 0.5;
 
-    startButton.onclick = () => {
-      document.getElementById('menu').style.display = 'none';
-      settingsPanel.style.display = 'none';
-      document.getElementById('ui').style.pointerEvents = 'none';
-      startGame();
+    const menu = document.getElementById('menu');
+    const settingsMenu = document.getElementById('settingsMenu');
+
+    document.getElementById('startBtn').onclick = () => {
+      menu.style.display = 'none';
+      controls.lock();
     };
 
-    settingsButton.onclick = () => {
-      settingsPanel.style.display = 'flex';
+    document.getElementById('settingsBtn').onclick = () => {
+      settingsMenu.style.display = 'flex';
     };
 
-    saveSettings.onclick = () => {
-      sensitivity = parseFloat(sensitivitySlider.value);
-      settingsPanel.style.display = 'none';
+    window.closeSettings = () => {
+      settingsMenu.style.display = 'none';
     };
 
-    const spinnerCanvas = document.getElementById('spinner');
-    const sctx = spinnerCanvas.getContext('2d');
-    spinnerCanvas.width = 200;
-    spinnerCanvas.height = 200;
-    let angle = 0;
-    function drawSpinner() {
-      sctx.clearRect(0, 0, spinnerCanvas.width, spinnerCanvas.height);
-      sctx.save();
-      sctx.translate(100, 100);
-      sctx.rotate(angle);
-      sctx.fillStyle = 'white';
-      sctx.fillRect(-50, -25, 100, 50);
-      sctx.restore();
-      angle += 0.01;
-      requestAnimationFrame(drawSpinner);
+    document.getElementById('sensitivity').oninput = e => sensitivity = parseFloat(e.target.value);
+
+    init();
+    animate();
+
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb);
+
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+      renderer = new THREE.WebGLRenderer();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      controls = new PointerLockControls(camera, renderer.domElement);
+      scene.add(controls.getObject());
+
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200, 20, 20), new THREE.MeshBasicMaterial({ color: 0x008800, wireframe: true }));
+      floor.rotation.x = -Math.PI / 2;
+      scene.add(floor);
+
+      const geometry = new THREE.BoxGeometry(1, 1, 1);
+      const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+      const cube = new THREE.Mesh(geometry, material);
+      cube.position.y = 0.5;
+      scene.add(cube);
+
+      for (let i = 0; i < 5; i++) {
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(1, 3, 10), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+        wall.position.set(i * 3, 1.5, -10);
+        scene.add(wall);
+      }
+
+      document.addEventListener('keydown', onKeyDown);
+      document.addEventListener('keyup', onKeyUp);
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
     }
-    drawSpinner();
 
-    // Placeholder function
-    function startGame() {
-      const canvas = document.getElementById('gameCanvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      ctx.fillStyle = 'white';
-      ctx.fillRect(100, 100, 200, 100);
+    const keys = {};
+
+    function onKeyDown(event) {
+      keys[event.code] = true;
+      if (event.code === 'Space' && canJump) {
+        velocity.y += 5;
+        canJump = false;
+      }
+    }
+
+    function onKeyUp(event) {
+      keys[event.code] = false;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = clock.getDelta();
+      velocity.x -= velocity.x * 10.0 * delta;
+      velocity.z -= velocity.z * 10.0 * delta;
+      velocity.y -= 9.8 * delta; // gravity
+
+      direction.z = Number(keys['KeyW']) - Number(keys['KeyS']);
+      direction.x = Number(keys['KeyD']) - Number(keys['KeyA']);
+      direction.normalize();
+
+      if (keys['ShiftLeft']) {
+        velocity.z -= direction.z * 30.0 * delta;
+        velocity.x -= direction.x * 30.0 * delta;
+      } else {
+        velocity.z -= direction.z * 10.0 * delta;
+        velocity.x -= direction.x * 10.0 * delta;
+      }
+
+      controls.moveRight(-velocity.x * delta);
+      controls.moveForward(-velocity.z * delta);
+      controls.getObject().position.y += velocity.y * delta;
+
+      if (controls.getObject().position.y < 1.6) {
+        velocity.y = 0;
+        controls.getObject().position.y = 1.6;
+        canJump = true;
+      }
+
+      controls.getObject().rotation.order = "YXZ";
+      controls.getObject().rotation.y += (direction.x * sensitivity * delta);
+
+      renderer.render(scene, camera);
     }
   </script>
 </body>
