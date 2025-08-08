@@ -71,9 +71,10 @@
     init();
     animate();
 
-    function hideOverlay() {
-      document.getElementById('overlay').style.display = 'none';
-    }
+    window.hideOverlay = function() {
+  document.getElementById('overlay').style.display = 'none';
+};
+
 
     function init() {
       scene = new THREE.Scene();
