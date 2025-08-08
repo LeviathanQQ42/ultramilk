@@ -1,166 +1,160 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ultra Milk</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ULTRA MILK — Minimal</title>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      font-family: sans-serif;
-      background: #111;
+    html,body{height:100%;margin:0;background:#111}
+    canvas{display:block}
+    /* Crosshair */
+    .crosshair{
+      position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;pointer-events:none;z-index:10;
+      display:flex;align-items:center;justify-content:center;
     }
-    canvas {
-      display: block;
-    }
-    #overlay {
-      position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: #000;
-      display: flex;
-      flex-direction: row;
-      justify-content: space-between;
-      align-items: center;
-      z-index: 10;
-    }
-    #overlayButtons {
-      padding-left: 50px;
-    }
-    #overlayButtons button {
-      display: block;
-      font-size: 24px;
-      margin: 20px 0;
-      padding: 10px 20px;
-    }
-    #spinner {
-      width: 100px; height: 100px;
-      background: white;
-      margin-right: 100px;
-      animation: spin 2s linear infinite;
-    }
-    @keyframes spin {
-      from { transform: rotateY(0deg); }
-      to { transform: rotateY(360deg); }
-    }
+    .crosshair:before{content:'';width:2px;height:12px;background:#fff;border-radius:2px}
+    .crosshair:after{content:'';height:2px;width:12px;background:#fff;border-radius:2px;position:absolute}
+    /* Quick HUD */
+    .hud{position:fixed;left:16px;bottom:16px;color:#ddd;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;z-index:10;opacity:0.9}
+    .hint{position:fixed;right:16px;bottom:16px;color:#aaa;font-family:monospace;z-index:10}
   </style>
 </head>
 <body>
-  <div id="overlay">
-    <div id="overlayButtons">
-      <button onclick="hideOverlay()">Start</button>
-    </div>
-    <div id="spinner"></div>
-  </div>
+  <div class="crosshair"></div>
+  <div class="hud">ULTRA MILK — Minimal</div>
+  <div class="hint">Click to lock pointer • WASD to move • Shift to sprint</div>
 
-  <canvas id="gameCanvas"></canvas>
+  <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+  <script>
+    // Minimal ULTRA MILK: flat plane + free-camera (pointer lock + WASD)
 
-  <script type="module">
-    import * as THREE from 'https://cdn.skypack.dev/three';
+    // Scene, camera, renderer
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x6aa0ff); // sky-like
 
-    let camera, scene, renderer, keys = {}, velocity, velocityY = 0, onGround = false, canSlide = true;
-    const sensitivity = 1.0;
+    const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.6, 5); // player eye height
 
-    const canvas = document.getElementById('gameCanvas');
-    renderer = new THREE.WebGLRenderer({ canvas });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    const renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
 
-    // Game runs immediately
-    init();
-    animate();
+    // Lights
+    const amb = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(amb);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(5,10,2);
+    scene.add(dir);
 
-    window.hideOverlay = function() {
-  document.getElementById('overlay').style.display = 'none';
-};
+    // Ground plane
+    const groundGeo = new THREE.PlaneGeometry(200,200);
+    const groundMat = new THREE.MeshStandardMaterial({color:0x6f9450, metalness:0.1, roughness:0.9});
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI/2;
+    ground.receiveShadow = true;
+    scene.add(ground);
 
-
-    function init() {
-      scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x87ceeb);
-
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 1.6, 5);
-
-      const light = new THREE.DirectionalLight(0xffffff, 1);
-      light.position.set(5, 10, 7.5);
-      scene.add(light);
-
-      const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(200, 200),
-        new THREE.MeshStandardMaterial({ color: 0x444444 })
-      );
-      ground.rotation.x = -Math.PI / 2;
-      scene.add(ground);
-
-      const milkman = new THREE.Mesh(
-        new THREE.BoxGeometry(1, 2, 1),
-        new THREE.MeshStandardMaterial({ color: 0xffffff })
-      );
-      milkman.position.set(0, 1, 0);
-      scene.add(milkman);
-
-      velocity = new THREE.Vector3();
-
-      document.addEventListener('keydown', e => keys[e.code] = true);
-      document.addEventListener('keyup', e => keys[e.code] = false);
-
-      document.addEventListener('mousemove', e => {
-        if (document.pointerLockElement === canvas) {
-          camera.rotation.y -= e.movementX * 0.002 * sensitivity;
-          camera.rotation.x -= e.movementY * 0.002 * sensitivity;
-          camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
-        }
-      });
-
-      canvas.addEventListener('click', () => {
-        canvas.requestPointerLock();
-      });
-
-      window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-      });
+    // Some props: a few boxes for visual reference
+    const boxGeo = new THREE.BoxGeometry(1,1,1);
+    const boxMat = new THREE.MeshStandardMaterial({color:0xffffff});
+    for(let i=0;i<12;i++){
+      const m = new THREE.Mesh(boxGeo, boxMat.clone());
+      m.material.color.setHSL(Math.random()*0.2+0.05,0.6,0.5);
+      m.position.set((Math.random()-0.5)*50,0.5,(Math.random()-0.5)*50);
+      m.rotation.y = Math.random()*Math.PI*2;
+      scene.add(m);
     }
 
-    function animate() {
-      requestAnimationFrame(animate);
+    // Controls state
+    const keys = {w:false,a:false,s:false,d:false,shift:false};
+    window.addEventListener('keydown', e => {
+      if(e.code === 'KeyW') keys.w = true;
+      if(e.code === 'KeyA') keys.a = true;
+      if(e.code === 'KeyS') keys.s = true;
+      if(e.code === 'KeyD') keys.d = true;
+      if(e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = true;
+    });
+    window.addEventListener('keyup', e => {
+      if(e.code === 'KeyW') keys.w = false;
+      if(e.code === 'KeyA') keys.a = false;
+      if(e.code === 'KeyS') keys.s = false;
+      if(e.code === 'KeyD') keys.d = false;
+      if(e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = false;
+    });
 
-      const speed = keys['ShiftLeft'] ? 0.2 : 0.1;
-      const forward = new THREE.Vector3(Math.sin(camera.rotation.y), 0, -Math.cos(camera.rotation.y));
-      const right = new THREE.Vector3(forward.z, 0, -forward.x);
+    // Pointer lock & mouse look
+    let yaw = 0, pitch = 0; // radians
+    const PI_2 = Math.PI/2;
+    function onMouseMove(e){
+      if(document.pointerLockElement !== renderer.domElement) return;
+      const movementX = e.movementX || 0;
+      const movementY = e.movementY || 0;
+      const sensitivity = 0.002;
+      yaw -= movementX * sensitivity;
+      pitch -= movementY * sensitivity;
+      pitch = Math.max(-PI_2 + 0.01, Math.min(PI_2 - 0.01, pitch));
+    }
+    document.addEventListener('mousemove', onMouseMove, false);
 
-      if (keys['KeyW']) velocity.add(forward.clone().multiplyScalar(speed));
-      if (keys['KeyS']) velocity.add(forward.clone().multiplyScalar(-speed));
-      if (keys['KeyA']) velocity.add(right.clone().multiplyScalar(-speed));
-      if (keys['KeyD']) velocity.add(right.clone().multiplyScalar(speed));
+    renderer.domElement.addEventListener('click', ()=>{
+      renderer.domElement.requestPointerLock();
+    });
 
-      if (keys['Space'] && onGround) {
-        velocityY = 0.2;
-        onGround = false;
-      }
+    // Resize
+    window.addEventListener('resize', ()=>{
+      camera.aspect = innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
 
-      if (keys['ShiftLeft'] && canSlide) {
-        velocity.multiplyScalar(1.5);
-        canSlide = false;
-        setTimeout(() => canSlide = true, 1000);
-      }
+    // Movement update
+    const velocity = new THREE.Vector3();
+    const direction = new THREE.Vector3();
+    const up = new THREE.Vector3(0,1,0);
 
-      camera.position.add(velocity);
-      camera.position.y += velocityY;
-      velocity.multiplyScalar(0.9);
+    const clock = new THREE.Clock();
 
-      velocityY -= 0.01;
-      if (camera.position.y <= 1.6) {
-        velocityY = 0;
-        camera.position.y = 1.6;
-        onGround = true;
-      }
+    function animate(){
+      const dt = Math.min(0.05, clock.getDelta());
+
+      // Build forward/right vectors from yaw
+      const cosYaw = Math.cos(yaw);
+      const sinYaw = Math.sin(yaw);
+      const forward = new THREE.Vector3(-sinYaw, 0, -cosYaw).normalize();
+      const right = new THREE.Vector3(cosYaw, 0, -sinYaw).normalize();
+
+      direction.set(0,0,0);
+      if(keys.w) direction.add(forward);
+      if(keys.s) direction.add(forward.clone().negate());
+      if(keys.a) direction.add(right.clone().negate());
+      if(keys.d) direction.add(right);
+      direction.normalize();
+
+      const baseSpeed = keys.shift ? 10 : 4; // m/s (sprint if shift)
+      // Smooth acceleration
+      const target = direction.multiplyScalar(baseSpeed);
+      velocity.lerp(target, 1 - Math.pow(0.001, dt));
+
+      // Move camera horizontally (keep y constant)
+      camera.position.addScaledVector(velocity, dt);
+      camera.position.y = 1.6; // enforce eye height on flat plane
+
+      // Apply rotation from yaw/pitch
+      camera.rotation.set(pitch, yaw, 0, 'YXZ');
 
       renderer.render(scene, camera);
+      requestAnimationFrame(animate);
     }
+
+    animate();
+
+    // Friendly fallback if pointer lock denied: show mouse cursor and let user drag
+    // (Already handled: pointer lock required for mouse-look, otherwise user can still use keyboard to move)
+
+    // Prevent context menu on right-click
+    window.addEventListener('contextmenu', e=>e.preventDefault());
+
   </script>
 </body>
 </html>
