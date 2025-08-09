@@ -1,23 +1,41 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ULTRA MILK — Camera & Wall Scaling (No Hop)</title>
-  <style>
-    html,body{height:100%;margin:0;background:#111;overflow:hidden}
-    canvas{display:block}
-    .crosshair{position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;pointer-events:none;z-index:10;display:flex;align-items:center;justify-content:center;}
-    .crosshair:before{content:'';width:2px;height:12px;background:#fff;border-radius:2px}
-    .crosshair:after{content:'';height:2px;width:12px;background:#fff;border-radius:2px;position:absolute}
-    .hud{position:fixed;left:16px;bottom:16px;color:#ddd;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;z-index:10;opacity:0.9}
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ultra Milk — Titanfall + Guns + Enemy + HUD</title>
+<style>
+  html,body {
+    margin:0; height:100%; background:#111; overflow:hidden; font-family: Arial, sans-serif;
+  }
+  canvas { display:block; }
+  .crosshair {
+    position:fixed; left:50%; top:50%; width:20px; height:20px; margin:-10px 0 0 -10px;
+    pointer-events:none; z-index:10; display:flex; align-items:center; justify-content:center;
+  }
+  .crosshair:before {
+    content:''; width:2px; height:12px; background:#fff; border-radius:2px;
+  }
+  .crosshair:after {
+    content:''; height:2px; width:12px; background:#fff; border-radius:2px; position:absolute;
+  }
+  .hud {
+    position:fixed; bottom:16px; right:16px; color:#ddd; background:rgba(0,0,0,0.6);
+    padding:8px 12px; border-radius:6px; font-weight:bold; font-size:18px;
+    user-select:none; z-index:10; min-width:120px; text-align:center;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  .hud span {
+    color:#2ecc71;
+  }
+</style>
 </head>
 <body>
   <div class="crosshair"></div>
-  <div class="hud">WASD move, Shift sprint, Ctrl+Shift slide, Space jump (wall scale enabled)</div>
+  <div class="hud">Weapon: <span id="weaponName">AR (Vandal)</span><br>Kills: <span id="killCount">0</span></div>
   <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
   <script>
+    // === Setup scene, camera, renderer ===
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x6aa0ff);
 
@@ -35,6 +53,7 @@
     dirLight.position.set(5,10,2);
     scene.add(dirLight);
 
+    // === Ground and walls ===
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200,200),
       new THREE.MeshStandardMaterial({color:0x6f9450})
@@ -51,6 +70,7 @@
     wall2.position.set(3,2.5,0);
     scene.add(wall2);
 
+    // === Player ===
     const keys = {w:0,a:0,s:0,d:0,shift:0,ctrl:0,space:0};
     addEventListener('keydown', e=>{
       if(e.code==='KeyW') keys.w=1;
@@ -72,10 +92,8 @@
     });
 
     let yaw = 0, pitch = 0;
-
     addEventListener('mousemove', e=>{
       if(document.pointerLockElement !== renderer.domElement) return;
-      // Just simple raw mouse delta, no smoothing or snapping
       yaw -= e.movementX * 0.0025;
       pitch -= e.movementY * 0.0025;
       pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, pitch));
@@ -85,13 +103,52 @@
     let pos = new THREE.Vector3(0, camHeightStand, 5);
     let vel = new THREE.Vector3();
     let onGround = false;
-    let canWallScale = false; // renamed for clarity
     let slideTimer = 0;
     let jumpQueued = false;
-
     const playerRadius = 0.4;
     const clock = new THREE.Clock();
 
+    // === Weapons & State ===
+    const weapons = {
+      ar: {name: "AR (Vandal)", speed: 4, cooldown: 0.15, damage: 1},
+      pistol: {name: "Pistol", speed: 5, cooldown: 0.35, damage: 1},
+      katana: {name: "Katana", speed: 5, cooldown: 0.6, damage: 3},
+    };
+    let currentWeapon = "ar";
+
+    // Kill count for weapon unlocks
+    let killCount = 0;
+
+    // Update HUD elements
+    const weaponNameEl = document.getElementById("weaponName");
+    const killCountEl = document.getElementById("killCount");
+
+    function updateHUD(){
+      weaponNameEl.textContent = weapons[currentWeapon].name;
+      killCountEl.textContent = killCount;
+    }
+    updateHUD();
+
+    // === Enemy ===
+    const enemySize = 0.7;
+    const enemySpeed = 2;
+    let enemyHealth = 5;
+    let enemyPos = new THREE.Vector3(0, enemySize/2, -10);
+
+    const enemyGeo = new THREE.SphereGeometry(enemySize, 12, 12);
+    const enemyMat = new THREE.MeshStandardMaterial({color: 0xff5555});
+    const enemyMesh = new THREE.Mesh(enemyGeo, enemyMat);
+    enemyMesh.position.copy(enemyPos);
+    scene.add(enemyMesh);
+
+    // Enemy projectile
+    const projGeo = new THREE.SphereGeometry(0.1, 8, 8);
+    const projMat = new THREE.MeshStandardMaterial({color:0xffff55});
+    let projectiles = []; // each: {mesh, velocity}
+
+    // === Functions ===
+
+    // Wall collision
     function checkWallCollision(pos, wall) {
       const halfWallWidth = 0.5;
       const halfWallLength = 5;
@@ -99,15 +156,11 @@
       const dz = pos.z - 0;
       let collided = false;
       let correction = new THREE.Vector3(0,0,0);
-
       if (Math.abs(dz) < halfWallLength + playerRadius) {
         if (dx > - (halfWallWidth + playerRadius) && dx < (halfWallWidth + playerRadius)) {
           collided = true;
-          if (dx > 0) {
-            correction.x = (halfWallWidth + playerRadius) - dx;
-          } else {
-            correction.x = - (halfWallWidth + playerRadius) - dx;
-          }
+          if (dx > 0) correction.x = (halfWallWidth + playerRadius) - dx;
+          else correction.x = - (halfWallWidth + playerRadius) - dx;
         }
       }
       return { collided, correction };
@@ -120,15 +173,138 @@
       pos.add(correction);
     }
 
+    // Simple hit test raycast for hitscan (AR and pistol)
+    function shootHitscan(origin, direction, maxDist=100){
+      // Enemy hit test
+      const toEnemy = enemyPos.clone().sub(origin);
+      const projLen = toEnemy.dot(direction);
+      if(projLen > 0 && projLen < maxDist){
+        const closestDist = toEnemy.clone().sub(direction.clone().multiplyScalar(projLen)).length();
+        if(closestDist < enemySize){
+          enemyHealth -= weapons[currentWeapon].damage;
+          if(enemyHealth <= 0){
+            enemyHealth = 5;
+            killCount++;
+            updateHUD();
+            // Reset enemy pos randomly
+            enemyPos.set(
+              (Math.random()-0.5)*30,
+              enemySize/2,
+              (Math.random()-0.5)*30 - 10
+            );
+            enemyMesh.position.copy(enemyPos);
+          }
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Katana melee hit check (simple sphere in front of player)
+    function katanaSlash(){
+      const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+      const slashPos = pos.clone().add(forward.multiplyScalar(1));
+      const distToEnemy = slashPos.distanceTo(enemyPos);
+      if(distToEnemy < enemySize + 0.5){
+        enemyHealth -= weapons.katana.damage;
+        if(enemyHealth <= 0){
+          enemyHealth = 5;
+          killCount++;
+          updateHUD();
+          enemyPos.set(
+            (Math.random()-0.5)*30,
+            enemySize/2,
+            (Math.random()-0.5)*30 - 10
+          );
+          enemyMesh.position.copy(enemyPos);
+        }
+      }
+    }
+
+    // Enemy shooting cooldown
+    let enemyShootCooldown = 0;
+
+    // Slide and crouch vars
+    let slideTimer = 0;
+
+    // Player vars
+    let onGround = false;
+    let jumpQueued = false;
+
+    // Movement speeds by weapon
+    function getMoveSpeed(){
+      if(currentWeapon === "ar") return 4;
+      if(currentWeapon === "pistol") return 5;
+      if(currentWeapon === "katana") return 5;
+      return 4;
+    }
+
+    // Handle mouse click to shoot (if pointer locked)
+    let canShoot = true;
+    let shootCooldown = 0;
+
+    window.addEventListener('mousedown', e=>{
+      if(document.pointerLockElement !== renderer.domElement) return;
+      if(e.button === 0 && canShoot){
+        if(currentWeapon === "katana"){
+          // No shooting with katana
+          return;
+        }
+        // Shoot hitscan
+        const origin = camera.position.clone();
+        const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
+        shootHitscan(origin, forward);
+        canShoot = false;
+        shootCooldown = weapons[currentWeapon].cooldown;
+      }
+    });
+
+    // Equip pistol or katana based on kills
+    function updateWeapon(){
+      if(killCount >= 3 && currentWeapon !== "katana"){
+        currentWeapon = "katana";
+        updateHUD();
+      } else if(killCount >= 2 && currentWeapon === "ar"){
+        currentWeapon = "pistol";
+        updateHUD();
+      }
+    }
+
+    // Katana slash on E
+    window.addEventListener('keydown', e=>{
+      if(e.code === "KeyE" && currentWeapon === "katana"){
+        katanaSlash();
+      }
+    });
+
+    // === Main update loop ===
     function update(){
       const dt = Math.min(0.05, clock.getDelta());
 
-      // Apply rotation directly from mouse input - no snapping or smoothing!
-      camera.rotation.set(pitch, yaw, 0, 'YXZ');
+      // Update cooldown timers
+      if(!canShoot){
+        shootCooldown -= dt;
+        if(shootCooldown <= 0){
+          canShoot = true;
+          shootCooldown = 0;
+        }
+      }
+      if(enemyShootCooldown > 0){
+        enemyShootCooldown -= dt;
+      }
 
+      // Camera rotation with quaternions (no snapping)
+      const quatPitch = new THREE.Quaternion();
+      const quatYaw = new THREE.Quaternion();
+      quatPitch.setFromAxisAngle(new THREE.Vector3(1,0,0), pitch);
+      quatYaw.setFromAxisAngle(new THREE.Vector3(0,1,0), yaw);
+      camera.quaternion.copy(quatYaw).multiply(quatPitch);
+
+      // Gravity and vertical velocity
       vel.y -= 20 * dt;
       pos.y += vel.y * dt;
 
+      // Ground collision
       if(pos.y <= camHeight){
         pos.y = camHeight;
         vel.y = 0;
@@ -137,12 +313,12 @@
         onGround = false;
       }
 
-      canWallScale = false;
-
+      // Movement direction
       const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
       const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
 
-      let speed = keys.shift ? 8 : 4;
+      let speed = getMoveSpeed();
+      if(keys.shift) speed *= 2; // Sprint multiplier
       if(slideTimer > 0) speed += 4;
 
       let dir = new THREE.Vector3();
@@ -156,17 +332,37 @@
       pos.x += horizontalMove.x;
       pos.z += horizontalMove.z;
 
-      let collision1 = checkWallCollision(pos, wall1);
-      if (collision1.collided) {
-        resolveCollision(pos, collision1.correction);
-        canWallScale = true;
+      // Wall collision check
+      function checkWallCollision(pos, wall) {
+        const halfWallWidth = 0.5;
+        const halfWallLength = 5;
+        const dx = pos.x - wall.position.x;
+        const dz = pos.z - 0;
+        let collided = false;
+        let correction = new THREE.Vector3(0,0,0);
+        if (Math.abs(dz) < halfWallLength + playerRadius) {
+          if (dx > - (halfWallWidth + playerRadius) && dx < (halfWallWidth + playerRadius)) {
+            collided = true;
+            if (dx > 0) correction.x = (halfWallWidth + playerRadius) - dx;
+            else correction.x = - (halfWallWidth + playerRadius) - dx;
+          }
+        }
+        return { collided, correction };
       }
-      let collision2 = checkWallCollision(pos, wall2);
-      if (collision2.collided) {
-        resolveCollision(pos, collision2.correction);
-        canWallScale = true;
+      function resolveCollision(pos, correction) {
+        const maxPush = 0.1;
+        if (correction.x > maxPush) correction.x = maxPush;
+        if (correction.x < -maxPush) correction.x = -maxPush;
+        pos.add(correction);
       }
 
+      // Check walls and resolve
+      let c1 = checkWallCollision(pos, wall1);
+      if(c1.collided) resolveCollision(pos, c1.correction);
+      let c2 = checkWallCollision(pos, wall2);
+      if(c2.collided) resolveCollision(pos, c2.correction);
+
+      // Slide
       if(keys.ctrl && keys.shift && onGround && slideTimer <= 0){
         slideTimer = 0.6;
         camHeight = camHeightCrouch;
@@ -176,24 +372,71 @@
         if(slideTimer <= 0) camHeight = camHeightStand;
       }
 
+      // Jump
       if(keys.space && !jumpQueued){
         if(onGround){
           vel.y = 8;
-        } else if(canWallScale){
-          // Just allow vertical climb by jump-spamming near wall
-          vel.y = 8;
-          // No horizontal push on wall jump (no hop)
-          vel.x = 0;
         }
         jumpQueued = true;
       }
       if(!keys.space) jumpQueued = false;
 
-      // Apply horizontal velocity friction (for general movement)
+      // Apply horizontal friction for any leftover velocity (from knockback or whatever)
       pos.x += vel.x * dt;
       vel.x *= 0.85;
 
+      // Enemy AI movement - chase player on ground only
+      const enemyToPlayer = pos.clone().sub(enemyPos);
+      enemyToPlayer.y = 0;
+      const distToPlayer = enemyToPlayer.length();
+      if(distToPlayer > 0.1){
+        const enemyDir = enemyToPlayer.normalize();
+        enemyPos.add(enemyDir.multiplyScalar(enemySpeed * dt));
+        enemyMesh.position.copy(enemyPos);
+      }
+
+      // Enemy shooting projectiles every 2 seconds when in range
+      if(enemyShootCooldown <= 0 && distToPlayer < 15){
+        enemyShootCooldown = 2;
+
+        // Shoot projectile towards player
+        const proj = new THREE.Mesh(projGeo, projMat);
+        proj.position.copy(enemyPos).add(new THREE.Vector3(0,0.5,0));
+        scene.add(proj);
+
+        const shootDir = pos.clone().sub(enemyPos);
+        shootDir.y = 0;
+        shootDir.normalize();
+
+        projectiles.push({mesh: proj, velocity: shootDir.multiplyScalar(10)});
+      }
+
+      // Update projectiles
+      for(let i=projectiles.length-1; i>=0; i--){
+        let p = projectiles[i];
+        p.mesh.position.addScaledVector(p.velocity, dt);
+
+        // Check collision with player (simple sphere collision)
+        const dist = p.mesh.position.distanceTo(pos);
+        if(dist < playerRadius + 0.1){
+          // Player got hit - For demo just console log
+          console.log("Player HIT!");
+          scene.remove(p.mesh);
+          projectiles.splice(i,1);
+          continue;
+        }
+
+        // Remove if too far
+        if(p.mesh.position.distanceTo(enemyPos) > 30){
+          scene.remove(p.mesh);
+          projectiles.splice(i,1);
+        }
+      }
+
+      // Update camera position
       camera.position.set(pos.x, pos.y, pos.z);
+
+      updateWeapon(); // check if need to switch weapons from kills
 
       renderer.render(scene, camera);
       requestAnimationFrame(update);
