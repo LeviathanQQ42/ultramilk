@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ULTRA MILK — Titanfall Style Crisp Camera</title>
+  <title>ULTRA MILK — Titanfall Style Crisp Camera & Walljump Fix</title>
   <style>
     html,body{height:100%;margin:0;background:#111;overflow:hidden}
     canvas{display:block}
@@ -119,6 +119,10 @@
       pos.add(correction);
     }
 
+    function getWallSide(pos, wall) {
+      return (pos.x < wall.position.x) ? -1 : 1;
+    }
+
     function update(){
       const dt = Math.min(0.05, clock.getDelta());
 
@@ -136,6 +140,7 @@
       }
 
       canWallJump = false;
+      let wallJumpDirection = 0;
 
       const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
       const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
@@ -158,11 +163,13 @@
       if (collision1.collided) {
         resolveCollision(pos, collision1.correction);
         canWallJump = true;
+        wallJumpDirection = getWallSide(pos, wall1);
       }
       let collision2 = checkWallCollision(pos, wall2);
       if (collision2.collided) {
         resolveCollision(pos, collision2.correction);
         canWallJump = true;
+        wallJumpDirection = getWallSide(pos, wall2);
       }
 
       if(keys.ctrl && keys.shift && onGround && slideTimer <= 0){
@@ -178,16 +185,19 @@
         if(onGround){
           vel.y = 8;
         } else if(canWallJump){
-          vel.y = 8;
-          if(Math.abs(pos.x - wall1.position.x) < (0.5 + playerRadius)) vel.x = 5;
-          else if(Math.abs(pos.x - wall2.position.x) < (0.5 + playerRadius)) vel.x = -5;
+          // Must push away from wall to wall jump
+          const pushingAway = (wallJumpDirection < 0 && keys.d) || (wallJumpDirection > 0 && keys.a);
+          if(pushingAway){
+            vel.y = 8;
+            vel.x = 12 * wallJumpDirection;
+          }
         }
         jumpQueued = true;
       }
       if(!keys.space) jumpQueued = false;
 
       pos.x += vel.x * dt;
-      vel.x *= 0.8;
+      vel.x *= 0.85;
 
       camera.position.set(pos.x, pos.y, pos.z);
 
