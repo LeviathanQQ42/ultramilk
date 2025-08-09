@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ULTRA MILK — Titanfall Movement Test</title>
+  <title>ULTRA MILK — Titanfall Movement Test Fixed</title>
   <style>
     html,body{height:100%;margin:0;background:#111;overflow:hidden}
     canvas{display:block}
@@ -49,10 +49,26 @@
     scene.add(wall2);
 
     const keys = {w:0,a:0,s:0,d:0,shift:0,ctrl:0,space:0};
-    addEventListener('keydown', e=>{if(e.code==='KeyW')keys.w=1;if(e.code==='KeyA')keys.a=1;if(e.code==='KeyS')keys.s=1;if(e.code==='KeyD')keys.d=1;if(e.code==='ShiftLeft')keys.shift=1;if(e.code==='ControlLeft')keys.ctrl=1;if(e.code==='Space')keys.space=1;});
-    addEventListener('keyup', e=>{if(e.code==='KeyW')keys.w=0;if(e.code==='KeyA')keys.a=0;if(e.code==='KeyS')keys.s=0;if(e.code==='KeyD')keys.d=0;if(e.code==='ShiftLeft')keys.shift=0;if(e.code==='ControlLeft')keys.ctrl=0;if(e.code==='Space')keys.space=0;});
+    addEventListener('keydown', e=>{
+      if(e.code==='KeyW') keys.w=1;
+      if(e.code==='KeyA') keys.a=1;
+      if(e.code==='KeyS') keys.s=1;
+      if(e.code==='KeyD') keys.d=1;
+      if(e.code==='ShiftLeft') keys.shift=1;
+      if(e.code==='ControlLeft') keys.ctrl=1;
+      if(e.code==='Space') keys.space=1;
+    });
+    addEventListener('keyup', e=>{
+      if(e.code==='KeyW') keys.w=0;
+      if(e.code==='KeyA') keys.a=0;
+      if(e.code==='KeyS') keys.s=0;
+      if(e.code==='KeyD') keys.d=0;
+      if(e.code==='ShiftLeft') keys.shift=0;
+      if(e.code==='ControlLeft') keys.ctrl=0;
+      if(e.code==='Space') keys.space=0;
+    });
 
-    let yaw=0,pitch=0;
+    let yaw=0, pitch=0;
     addEventListener('mousemove', e=>{
       if(document.pointerLockElement!==renderer.domElement) return;
       yaw -= e.movementX*0.002;
@@ -68,49 +84,119 @@
     let slideTimer = 0;
     let jumpQueued = false;
 
+    const playerRadius = 0.4; // player collision radius for wall pushback
     const clock = new THREE.Clock();
+
+    function checkWallCollision(pos, wall) {
+      // Walls are at fixed x, width=1, z length=10 (centered at z=0)
+      // Player collision radius is playerRadius
+      const halfWallWidth = 0.5;
+      const halfWallLength = 5;
+
+      const dx = pos.x - wall.position.x;
+      const dz = pos.z - 0; // walls centered at z=0
+
+      let collided = false;
+      let correctionX = 0;
+
+      // Check if player is within z range of wall length + radius buffer
+      if (Math.abs(dz) < halfWallLength + playerRadius) {
+        // Check horizontal collision on x axis
+        if (dx > - (halfWallWidth + playerRadius) && dx < (halfWallWidth + playerRadius)) {
+          collided = true;
+          if (dx > 0) {
+            // Player is on positive side of wall center, push out positive
+            correctionX = (halfWallWidth + playerRadius) - dx;
+          } else {
+            // Player is on negative side, push out negative
+            correctionX = - (halfWallWidth + playerRadius) - dx;
+          }
+        }
+      }
+      return { collided, correctionX };
+    }
 
     function update(){
       const dt = Math.min(0.05, clock.getDelta());
       vel.y -= 20*dt;
 
-      if(pos.y <= camHeight){pos.y = camHeight;vel.y=0;onGround=true;} else {onGround=false;}
-
-      canWallJump = false;
-      if(!onGround){
-        if(Math.abs(pos.x - wall1.position.x) < 0.6 && Math.abs(pos.z) < 5) canWallJump = true;
-        if(Math.abs(pos.x - wall2.position.x) < 0.6 && Math.abs(pos.z) < 5) canWallJump = true;
+      if(pos.y <= camHeight){
+        pos.y = camHeight;
+        vel.y = 0;
+        onGround = true;
+      } else {
+        onGround = false;
       }
 
+      // Reset wall jump flag
+      canWallJump = false;
+
+      // Calculate direction vectors correctly (fix A/D)
       const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
-      const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), forward).normalize();
-      let speed = keys.shift?8:4;
-      if(slideTimer>0) speed += 4;
+      const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+
+      let speed = keys.shift ? 8 : 4;
+      if(slideTimer > 0) speed += 4;
 
       let dir = new THREE.Vector3();
       if(keys.w) dir.add(forward);
       if(keys.s) dir.add(forward.clone().negate());
       if(keys.a) dir.add(right.clone().negate());
       if(keys.d) dir.add(right);
-      if(dir.length()>0) dir.normalize();
+      if(dir.length() > 0) dir.normalize();
 
-      pos.addScaledVector(dir, speed*dt);
+      // Calculate intended new horizontal position
+      let newPos = pos.clone();
+      newPos.addScaledVector(dir, speed * dt);
 
-      if(keys.ctrl && keys.shift && onGround && slideTimer<=0){slideTimer = 0.6; camHeight = camHeightCrouch;}
-      if(slideTimer>0){slideTimer -= dt; if(slideTimer<=0) camHeight = camHeightStand;}
+      // Apply vertical velocity after horizontal move
+      newPos.y += vel.y * dt;
 
+      // Check wall collisions for both walls
+      let collision1 = checkWallCollision(newPos, wall1);
+      let collision2 = checkWallCollision(newPos, wall2);
+
+      // Resolve collisions by pushing out horizontally
+      if (collision1.collided) {
+        newPos.x += collision1.correctionX;
+        canWallJump = true;
+      }
+      if (collision2.collided) {
+        newPos.x += collision2.correctionX;
+        canWallJump = true;
+      }
+
+      // Update position
+      pos.copy(newPos);
+
+      // Slide logic
+      if(keys.ctrl && keys.shift && onGround && slideTimer <= 0){
+        slideTimer = 0.6; // slide duration
+        camHeight = camHeightCrouch;
+      }
+      if(slideTimer > 0){
+        slideTimer -= dt;
+        if(slideTimer <= 0) camHeight = camHeightStand;
+      }
+
+      // Jump handling
       if(keys.space && !jumpQueued){
-        if(onGround){vel.y = 8;}
-        else if(canWallJump){vel.y = 8; if(Math.abs(pos.x - wall1.position.x) < 1) vel.x = 5; if(Math.abs(pos.x - wall2.position.x) < 1) vel.x = -5;}
+        if(onGround){
+          vel.y = 8;
+        } else if(canWallJump){
+          vel.y = 8;
+          // Push off from wall opposite side
+          if(Math.abs(pos.x - wall1.position.x) < (0.5 + playerRadius)) vel.x = 5;
+          else if(Math.abs(pos.x - wall2.position.x) < (0.5 + playerRadius)) vel.x = -5;
+        }
         jumpQueued = true;
       }
       if(!keys.space) jumpQueued = false;
 
-      pos.addScaledVector(vel, dt);
-
-      // Simple wall collision stop
-      if(Math.abs(pos.x - wall1.position.x) < 0.5 && Math.abs(pos.z) < 5) pos.x = wall1.position.x - 0.5;
-      if(Math.abs(pos.x - wall2.position.x) < 0.5 && Math.abs(pos.z) < 5) pos.x = wall2.position.x + 0.5;
+      // Apply velocity horizontal component (e.g. from wall jump push)
+      pos.x += vel.x * dt;
+      // Apply friction to horizontal velocity
+      vel.x *= 0.8;
 
       camera.position.set(pos.x, pos.y, pos.z);
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
