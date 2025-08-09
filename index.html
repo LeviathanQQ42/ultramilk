@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ULTRA MILK — Titanfall Movement Test Smooth Camera</title>
+  <title>ULTRA MILK — Titanfall Style Crisp Camera</title>
   <style>
     html,body{height:100%;margin:0;background:#111;overflow:hidden}
     canvas{display:block}
@@ -71,16 +71,13 @@
       if(e.code==='Space') keys.space=0;
     });
 
-    // Camera rotation smoothing variables
-    let targetYaw = 0, targetPitch = 0;
-    let smoothYaw = 0, smoothPitch = 0;
-    const smoothFactor = 0.1; // smaller = smoother, more lag
+    let yaw = 0, pitch = 0;
 
     addEventListener('mousemove', e=>{
       if(document.pointerLockElement !== renderer.domElement) return;
-      targetYaw -= e.movementX * 0.002;
-      targetPitch -= e.movementY * 0.002;
-      targetPitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, targetPitch));
+      yaw -= e.movementX * 0.0025;
+      pitch -= e.movementY * 0.0025;
+      pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, pitch));
     });
     renderer.domElement.addEventListener('click', ()=>renderer.domElement.requestPointerLock());
 
@@ -125,12 +122,8 @@
     function update(){
       const dt = Math.min(0.05, clock.getDelta());
 
-      // Smooth camera rotation lerp
-      smoothYaw += (targetYaw - smoothYaw) * smoothFactor;
-      smoothPitch += (targetPitch - smoothPitch) * smoothFactor;
-      camera.rotation.set(smoothPitch, smoothYaw, 0, 'YXZ');
+      camera.rotation.set(pitch, yaw, 0, 'YXZ');
 
-      // Gravity
       vel.y -= 20 * dt;
       pos.y += vel.y * dt;
 
@@ -144,9 +137,8 @@
 
       canWallJump = false;
 
-      // Movement directions fixed
-      const forward = new THREE.Vector3(-Math.sin(smoothYaw),0,-Math.cos(smoothYaw));
-      const right = new THREE.Vector3(Math.cos(smoothYaw), 0, -Math.sin(smoothYaw));
+      const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+      const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
 
       let speed = keys.shift ? 8 : 4;
       if(slideTimer > 0) speed += 4;
@@ -162,7 +154,6 @@
       pos.x += horizontalMove.x;
       pos.z += horizontalMove.z;
 
-      // Collisions & resolution
       let collision1 = checkWallCollision(pos, wall1);
       if (collision1.collided) {
         resolveCollision(pos, collision1.correction);
@@ -174,7 +165,6 @@
         canWallJump = true;
       }
 
-      // Slide
       if(keys.ctrl && keys.shift && onGround && slideTimer <= 0){
         slideTimer = 0.6;
         camHeight = camHeightCrouch;
@@ -184,7 +174,6 @@
         if(slideTimer <= 0) camHeight = camHeightStand;
       }
 
-      // Jump
       if(keys.space && !jumpQueued){
         if(onGround){
           vel.y = 8;
@@ -197,7 +186,6 @@
       }
       if(!keys.space) jumpQueued = false;
 
-      // Wall jump horizontal velocity push friction
       pos.x += vel.x * dt;
       vel.x *= 0.8;
 
