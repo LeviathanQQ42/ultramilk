@@ -7,10 +7,7 @@
   <style>
     html,body{height:100%;margin:0;background:#111;overflow:hidden}
     canvas{display:block}
-    .crosshair{
-      position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;pointer-events:none;z-index:10;
-      display:flex;align-items:center;justify-content:center;
-    }
+    .crosshair{position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;pointer-events:none;z-index:10;display:flex;align-items:center;justify-content:center;}
     .crosshair:before{content:'';width:2px;height:12px;background:#fff;border-radius:2px}
     .crosshair:after{content:'';height:2px;width:12px;background:#fff;border-radius:2px;position:absolute}
     .hud{position:fixed;left:16px;bottom:16px;color:#ddd;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;z-index:10;opacity:0.9}
@@ -33,17 +30,15 @@
     renderer.setSize(innerWidth, innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    const amb = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(amb);
-    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-    dir.position.set(5,10,2);
-    scene.add(dir);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(5,10,2);
+    scene.add(dirLight);
 
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(200,200), new THREE.MeshStandardMaterial({color:0x6f9450}));
     ground.rotation.x = -Math.PI/2;
     scene.add(ground);
 
-    // Two walls for wall jumping
     const wallMat = new THREE.MeshStandardMaterial({color:0x888888});
     const wallGeo = new THREE.BoxGeometry(1,5,10);
     const wall1 = new THREE.Mesh(wallGeo, wallMat);
@@ -53,11 +48,10 @@
     wall2.position.set(3,2.5,0);
     scene.add(wall2);
 
-    const keys = {w:0,a:0,s:0,d:0,shift:0,ctrl:0};
-    addEventListener('keydown', e=>{if(e.code==='KeyW')keys.w=1;if(e.code==='KeyA')keys.a=1;if(e.code==='KeyS')keys.s=1;if(e.code==='KeyD')keys.d=1;if(e.code==='ShiftLeft')keys.shift=1;if(e.code==='ControlLeft')keys.ctrl=1;});
-    addEventListener('keyup', e=>{if(e.code==='KeyW')keys.w=0;if(e.code==='KeyA')keys.a=0;if(e.code==='KeyS')keys.s=0;if(e.code==='KeyD')keys.d=0;if(e.code==='ShiftLeft')keys.shift=0;if(e.code==='ControlLeft')keys.ctrl=0;});
+    const keys = {w:0,a:0,s:0,d:0,shift:0,ctrl:0,space:0};
+    addEventListener('keydown', e=>{if(e.code==='KeyW')keys.w=1;if(e.code==='KeyA')keys.a=1;if(e.code==='KeyS')keys.s=1;if(e.code==='KeyD')keys.d=1;if(e.code==='ShiftLeft')keys.shift=1;if(e.code==='ControlLeft')keys.ctrl=1;if(e.code==='Space')keys.space=1;});
+    addEventListener('keyup', e=>{if(e.code==='KeyW')keys.w=0;if(e.code==='KeyA')keys.a=0;if(e.code==='KeyS')keys.s=0;if(e.code==='KeyD')keys.d=0;if(e.code==='ShiftLeft')keys.shift=0;if(e.code==='ControlLeft')keys.ctrl=0;if(e.code==='Space')keys.space=0;});
 
-    // Pointer lock smooth look
     let yaw=0,pitch=0;
     addEventListener('mousemove', e=>{
       if(document.pointerLockElement!==renderer.domElement) return;
@@ -67,38 +61,29 @@
     });
     renderer.domElement.addEventListener('click',()=>renderer.domElement.requestPointerLock());
 
-    // Movement physics
     let pos = new THREE.Vector3(0,camHeightStand,5);
     let vel = new THREE.Vector3();
     let onGround = false;
     let canWallJump = false;
     let slideTimer = 0;
+    let jumpQueued = false;
 
     const clock = new THREE.Clock();
 
     function update(){
       const dt = Math.min(0.05, clock.getDelta());
-      // Gravity
       vel.y -= 20*dt;
-      // Ground check
-      if(pos.y <= camHeight){
-        pos.y = camHeight;
-        vel.y = 0;
-        onGround = true;
-      } else {
-        onGround = false;
-      }
 
-      // Wall check for wall jump reset
+      if(pos.y <= camHeight){pos.y = camHeight;vel.y=0;onGround=true;} else {onGround=false;}
+
       canWallJump = false;
       if(!onGround){
-        if(Math.abs(pos.x - wall1.position.x) < 0.6 && pos.z < 5 && pos.z > -5) canWallJump = true;
-        if(Math.abs(pos.x - wall2.position.x) < 0.6 && pos.z < 5 && pos.z > -5) canWallJump = true;
+        if(Math.abs(pos.x - wall1.position.x) < 0.6 && Math.abs(pos.z) < 5) canWallJump = true;
+        if(Math.abs(pos.x - wall2.position.x) < 0.6 && Math.abs(pos.z) < 5) canWallJump = true;
       }
 
-      // Input movement
       const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
-      const right = new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0)).negate();
+      const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), forward).normalize();
       let speed = keys.shift?8:4;
       if(slideTimer>0) speed += 4;
 
@@ -111,28 +96,21 @@
 
       pos.addScaledVector(dir, speed*dt);
 
-      // Slide logic
-      if(keys.ctrl && keys.shift && onGround && slideTimer<=0){
-        slideTimer = 0.6; // slide duration
-        camHeight = camHeightCrouch;
-      }
-      if(slideTimer>0){
-        slideTimer -= dt;
-        if(slideTimer<=0) camHeight = camHeightStand;
-      }
+      if(keys.ctrl && keys.shift && onGround && slideTimer<=0){slideTimer = 0.6; camHeight = camHeightCrouch;}
+      if(slideTimer>0){slideTimer -= dt; if(slideTimer<=0) camHeight = camHeightStand;}
 
-      // Jump
-      document.onkeydown = function(ev){
-        if(ev.code==='Space'){
-          if(onGround){vel.y = 8;onGround=false;}
-          else if(canWallJump){vel.y = 8; // push off wall
-            if(Math.abs(pos.x - wall1.position.x) < 1) vel.x = 5;
-            if(Math.abs(pos.x - wall2.position.x) < 1) vel.x = -5;
-          }
-        }
+      if(keys.space && !jumpQueued){
+        if(onGround){vel.y = 8;}
+        else if(canWallJump){vel.y = 8; if(Math.abs(pos.x - wall1.position.x) < 1) vel.x = 5; if(Math.abs(pos.x - wall2.position.x) < 1) vel.x = -5;}
+        jumpQueued = true;
       }
+      if(!keys.space) jumpQueued = false;
 
       pos.addScaledVector(vel, dt);
+
+      // Simple wall collision stop
+      if(Math.abs(pos.x - wall1.position.x) < 0.5 && Math.abs(pos.z) < 5) pos.x = wall1.position.x - 0.5;
+      if(Math.abs(pos.x - wall2.position.x) < 0.5 && Math.abs(pos.z) < 5) pos.x = wall2.position.x + 0.5;
 
       camera.position.set(pos.x, pos.y, pos.z);
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
