@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ULTRA MILK — Titanfall Movement Test Fixed Smooth</title>
+  <title>ULTRA MILK — Titanfall Movement Test Smooth Camera</title>
   <style>
     html,body{height:100%;margin:0;background:#111;overflow:hidden}
     canvas{display:block}
@@ -71,23 +71,27 @@
       if(e.code==='Space') keys.space=0;
     });
 
-    let yaw=0, pitch=0;
-    addEventListener('mousemove', e=>{
-      if(document.pointerLockElement!==renderer.domElement) return;
-      yaw -= e.movementX*0.002;
-      pitch -= e.movementY*0.002;
-      pitch = Math.max(-Math.PI/2+0.01, Math.min(Math.PI/2-0.01, pitch));
-    });
-    renderer.domElement.addEventListener('click',()=>renderer.domElement.requestPointerLock());
+    // Camera rotation smoothing variables
+    let targetYaw = 0, targetPitch = 0;
+    let smoothYaw = 0, smoothPitch = 0;
+    const smoothFactor = 0.1; // smaller = smoother, more lag
 
-    let pos = new THREE.Vector3(0,camHeightStand,5);
+    addEventListener('mousemove', e=>{
+      if(document.pointerLockElement !== renderer.domElement) return;
+      targetYaw -= e.movementX * 0.002;
+      targetPitch -= e.movementY * 0.002;
+      targetPitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, targetPitch));
+    });
+    renderer.domElement.addEventListener('click', ()=>renderer.domElement.requestPointerLock());
+
+    let pos = new THREE.Vector3(0, camHeightStand, 5);
     let vel = new THREE.Vector3();
     let onGround = false;
     let canWallJump = false;
     let slideTimer = 0;
     let jumpQueued = false;
 
-    const playerRadius = 0.4; // player collision radius for wall pushback
+    const playerRadius = 0.4;
     const clock = new THREE.Clock();
 
     function checkWallCollision(pos, wall) {
@@ -111,7 +115,6 @@
       return { collided, correction };
     }
 
-    // Smooth collision resolution helper (push player out gradually)
     function resolveCollision(pos, correction) {
       const maxPush = 0.1;
       if (correction.x > maxPush) correction.x = maxPush;
@@ -122,16 +125,15 @@
     function update(){
       const dt = Math.min(0.05, clock.getDelta());
 
-      // Update rotation first (no snapping)
-      camera.rotation.set(pitch, yaw, 0, 'YXZ');
+      // Smooth camera rotation lerp
+      smoothYaw += (targetYaw - smoothYaw) * smoothFactor;
+      smoothPitch += (targetPitch - smoothPitch) * smoothFactor;
+      camera.rotation.set(smoothPitch, smoothYaw, 0, 'YXZ');
 
-      // Apply gravity to velocity Y
-      vel.y -= 20*dt;
-
-      // Apply vertical movement
+      // Gravity
+      vel.y -= 20 * dt;
       pos.y += vel.y * dt;
 
-      // Ground collision and reset vertical velocity
       if(pos.y <= camHeight){
         pos.y = camHeight;
         vel.y = 0;
@@ -142,9 +144,9 @@
 
       canWallJump = false;
 
-      // Calculate direction vectors for movement (fix A/D)
-      const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
-      const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+      // Movement directions fixed
+      const forward = new THREE.Vector3(-Math.sin(smoothYaw),0,-Math.cos(smoothYaw));
+      const right = new THREE.Vector3(Math.cos(smoothYaw), 0, -Math.sin(smoothYaw));
 
       let speed = keys.shift ? 8 : 4;
       if(slideTimer > 0) speed += 4;
@@ -156,14 +158,11 @@
       if(keys.d) dir.add(right);
       if(dir.length() > 0) dir.normalize();
 
-      // Calculate intended horizontal movement
       let horizontalMove = dir.clone().multiplyScalar(speed * dt);
-
-      // Update position horizontally
       pos.x += horizontalMove.x;
       pos.z += horizontalMove.z;
 
-      // Check collisions with walls and resolve smoothly
+      // Collisions & resolution
       let collision1 = checkWallCollision(pos, wall1);
       if (collision1.collided) {
         resolveCollision(pos, collision1.correction);
@@ -175,7 +174,7 @@
         canWallJump = true;
       }
 
-      // Slide logic
+      // Slide
       if(keys.ctrl && keys.shift && onGround && slideTimer <= 0){
         slideTimer = 0.6;
         camHeight = camHeightCrouch;
@@ -185,7 +184,7 @@
         if(slideTimer <= 0) camHeight = camHeightStand;
       }
 
-      // Jump logic
+      // Jump
       if(keys.space && !jumpQueued){
         if(onGround){
           vel.y = 8;
@@ -198,11 +197,10 @@
       }
       if(!keys.space) jumpQueued = false;
 
-      // Apply horizontal velocity from wall jump push with friction
+      // Wall jump horizontal velocity push friction
       pos.x += vel.x * dt;
       vel.x *= 0.8;
 
-      // Update camera position last
       camera.position.set(pos.x, pos.y, pos.z);
 
       renderer.render(scene, camera);
