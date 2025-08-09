@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ULTRA MILK — Titanfall Style Crisp Camera & Walljump Fix</title>
+  <title>ULTRA MILK — Camera & Wall Scaling (No Hop)</title>
   <style>
     html,body{height:100%;margin:0;background:#111;overflow:hidden}
     canvas{display:block}
@@ -15,15 +15,15 @@
 </head>
 <body>
   <div class="crosshair"></div>
-  <div class="hud">Titanfall-Style Test — WASD move, Shift sprint, Space jump, Ctrl slide</div>
+  <div class="hud">WASD move, Shift sprint, Ctrl+Shift slide, Space jump (wall scale enabled)</div>
   <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
   <script>
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x6aa0ff);
 
     const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
-    let camHeightStand = 1.6;
-    let camHeightCrouch = 1.0;
+    const camHeightStand = 1.6;
+    const camHeightCrouch = 1.0;
     let camHeight = camHeightStand;
 
     const renderer = new THREE.WebGLRenderer({antialias:true});
@@ -75,6 +75,7 @@
 
     addEventListener('mousemove', e=>{
       if(document.pointerLockElement !== renderer.domElement) return;
+      // Just simple raw mouse delta, no smoothing or snapping
       yaw -= e.movementX * 0.0025;
       pitch -= e.movementY * 0.0025;
       pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, pitch));
@@ -84,7 +85,7 @@
     let pos = new THREE.Vector3(0, camHeightStand, 5);
     let vel = new THREE.Vector3();
     let onGround = false;
-    let canWallJump = false;
+    let canWallScale = false; // renamed for clarity
     let slideTimer = 0;
     let jumpQueued = false;
 
@@ -119,13 +120,10 @@
       pos.add(correction);
     }
 
-    function getWallSide(pos, wall) {
-      return (pos.x < wall.position.x) ? -1 : 1;
-    }
-
     function update(){
       const dt = Math.min(0.05, clock.getDelta());
 
+      // Apply rotation directly from mouse input - no snapping or smoothing!
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
 
       vel.y -= 20 * dt;
@@ -139,8 +137,7 @@
         onGround = false;
       }
 
-      canWallJump = false;
-      let wallJumpDirection = 0;
+      canWallScale = false;
 
       const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
       const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
@@ -162,14 +159,12 @@
       let collision1 = checkWallCollision(pos, wall1);
       if (collision1.collided) {
         resolveCollision(pos, collision1.correction);
-        canWallJump = true;
-        wallJumpDirection = getWallSide(pos, wall1);
+        canWallScale = true;
       }
       let collision2 = checkWallCollision(pos, wall2);
       if (collision2.collided) {
         resolveCollision(pos, collision2.correction);
-        canWallJump = true;
-        wallJumpDirection = getWallSide(pos, wall2);
+        canWallScale = true;
       }
 
       if(keys.ctrl && keys.shift && onGround && slideTimer <= 0){
@@ -184,18 +179,17 @@
       if(keys.space && !jumpQueued){
         if(onGround){
           vel.y = 8;
-        } else if(canWallJump){
-          // Must push away from wall to wall jump
-          const pushingAway = (wallJumpDirection < 0 && keys.d) || (wallJumpDirection > 0 && keys.a);
-          if(pushingAway){
-            vel.y = 8;
-            vel.x = 12 * wallJumpDirection;
-          }
+        } else if(canWallScale){
+          // Just allow vertical climb by jump-spamming near wall
+          vel.y = 8;
+          // No horizontal push on wall jump (no hop)
+          vel.x = 0;
         }
         jumpQueued = true;
       }
       if(!keys.space) jumpQueued = false;
 
+      // Apply horizontal velocity friction (for general movement)
       pos.x += vel.x * dt;
       vel.x *= 0.85;
 
