@@ -3,29 +3,35 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Ultra Milk — Movement + Guns + Enemy + Draggable Cube</title>
+<title>Ultra Milk — Full (Weapons, Enemy, Draggable Cube)</title>
 <style>
   html,body{height:100%;margin:0;background:#111;overflow:hidden;font-family:Segoe UI,Roboto,Arial}
   canvas{display:block}
-  .crosshair{position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;pointer-events:none;z-index:10}
+  .crosshair{position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;pointer-events:none;z-index:40}
   .crosshair:before{content:'';position:absolute;left:9px;top:4px;width:2px;height:12px;background:#fff;border-radius:1px}
   .crosshair:after{content:'';position:absolute;top:9px;left:4px;height:2px;width:12px;background:#fff;border-radius:1px}
-  .hud{position:fixed;right:16px;bottom:16px;background:rgba(0,0,0,0.6);padding:10px 14px;border-radius:8px;color:#e6eef7;z-index:20;text-align:center}
+  .hud{position:fixed;right:16px;bottom:16px;background:rgba(0,0,0,0.6);padding:10px 14px;border-radius:8px;color:#e6eef7;z-index:50;text-align:center}
   .hud .weapon{font-size:16px;font-weight:700}
   .hud .small{font-size:13px;color:#9fb0c6}
-  .hint{position:fixed;left:12px;bottom:16px;color:#9fb0c6;z-index:20}
+  .hint{position:fixed;left:12px;bottom:16px;color:#9fb0c6;z-index:50}
+  .msg{position:fixed;left:50%;top:12px;transform:translateX(-50%);color:#fff;background:rgba(0,0,0,0.4);padding:6px 10px;border-radius:6px;z-index:60}
 </style>
 </head>
 <body>
   <div class="crosshair"></div>
-  <div class="hud"><div class="weapon" id="weaponName">AR (Vandal)</div><div class="small">Kills: <span id="kills">0</span></div></div>
+  <div class="hud">
+    <div class="weapon" id="weaponName">AR (Vandal)</div>
+    <div class="small">Kills: <span id="kills">0</span></div>
+    <div class="small">Swap: 1=AR 2=Pistol 3=Katana</div>
+  </div>
   <div class="hint">Click to lock • WASD • Shift sprint • Ctrl+Shift slide • Space jump • E pickup/slash • LMB shoot</div>
+  <div class="msg" id="msg" style="display:none;"></div>
 
 <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
 <script>
-/* ------------------------------
-   Scene + Camera + Renderer
-   ------------------------------ */
+/* ----------------------
+   Basic scene setup
+   ---------------------- */
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x6aa0ff);
 
@@ -34,53 +40,43 @@ const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 
-/* Lighting */
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-dir.position.set(5,10,2);
-scene.add(dir);
+scene.add(new THREE.AmbientLight(0xffffff,0.6));
+const dirL = new THREE.DirectionalLight(0xffffff,0.9);
+dirL.position.set(5,10,2);
+scene.add(dirL);
 
 /* Ground */
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(200,200), new THREE.MeshStandardMaterial({color:0x6f9450}));
 ground.rotation.x = -Math.PI/2;
 scene.add(ground);
 
-/* Obstacles (static boxes) */
+/* Obstacles */
 const obstacles = [];
-const boxMat = new THREE.MeshStandardMaterial({color:0x777777});
 function addBox(x,y,z,sx,sy,sz,color){
   const geo = new THREE.BoxGeometry(sx,sy,sz);
-  const mat = new THREE.MeshStandardMaterial({color: color || 0x777777});
+  const mat = new THREE.MeshStandardMaterial({color: color||0x777777});
   const m = new THREE.Mesh(geo,mat);
   m.position.set(x,y,z);
-  m.userData.static = true;
   scene.add(m);
-  obstacles.push(m);
+  obstacles.push({mesh:m, hx:sx/2, hy:sy/2, hz:sz/2});
   return m;
 }
-// Some arena obstacles
 addBox(-6,0.5,-2,2,1,2,0x8a7d6b);
 addBox(5,0.5,1,2,1,2,0x8a7d6b);
 addBox(0,1,-6,3,2,1,0x666666);
 addBox(-4,1,6,3,2,1,0x666666);
+addBox(3,0.5,6,3,1,3,0x7b6f57);
 
-/* Special draggable cube (physics) - distinct color */
+/* Draggable cube (physics) */
 const cubeSize = 0.8;
 const cubeGeo = new THREE.BoxGeometry(cubeSize,cubeSize,cubeSize);
 const cubeMat = new THREE.MeshStandardMaterial({color:0x33c3ff});
 const physCube = new THREE.Mesh(cubeGeo, cubeMat);
 physCube.position.set(0,1.0,2);
 scene.add(physCube);
-// simple physics state
-const cubeState = {
-  pos: physCube.position.clone(),
-  vel: new THREE.Vector3(),
-  mass: 2,
-  size: cubeSize,
-  held: false
-};
+const cubeState = { pos: physCube.position.clone(), vel: new THREE.Vector3(), mass: 2, size: cubeSize, held:false };
 
-/* Player state & controls */
+/* Player */
 const keys = {w:0,a:0,s:0,d:0,shift:0,ctrl:0,space:0};
 window.addEventListener('keydown', e=>{
   if(e.code==='KeyW') keys.w=1;
@@ -91,6 +87,9 @@ window.addEventListener('keydown', e=>{
   if(e.code==='ControlLeft') keys.ctrl=1;
   if(e.code==='Space') keys.space=1;
   if(e.code==='KeyE') onEPress();
+  if(e.code==='Digit1') tryEquip('ar');
+  if(e.code==='Digit2') tryEquip('pistol');
+  if(e.code==='Digit3') tryEquip('katana');
 });
 window.addEventListener('keyup', e=>{
   if(e.code==='KeyW') keys.w=0;
@@ -102,28 +101,40 @@ window.addEventListener('keyup', e=>{
   if(e.code==='Space') keys.space=0;
 });
 
-/* Raw camera look (no smoothing). Use quaternion to avoid Euler snaps. */
+/* Camera look: clamp deltas and ignore initial spurious events on pointerlock */
 let yaw = 0, pitch = 0;
+let ignoreMouseUntil = 0;
+const mouseClamp = 120; // clamp absurd movement so no snap
 window.addEventListener('mousemove', e=>{
   if(document.pointerLockElement !== renderer.domElement) return;
-  yaw -= e.movementX * 0.0025;
-  pitch -= e.movementY * 0.0025;
+  if(performance.now() < ignoreMouseUntil) return;
+  const dx = Math.max(-mouseClamp, Math.min(mouseClamp, e.movementX));
+  const dy = Math.max(-mouseClamp, Math.min(mouseClamp, e.movementY));
+  yaw -= dx * 0.0025;
+  pitch -= dy * 0.0025;
   pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, pitch));
 });
 renderer.domElement.addEventListener('click', ()=> {
   renderer.domElement.requestPointerLock();
 });
+document.addEventListener('pointerlockchange', ()=>{
+  // ignore mouse events for a short time after pointer lock change (stops initial warp)
+  ignoreMouseUntil = performance.now() + 40; // ms
+});
 
-/* Player movement / physics */
+/* Player movement state */
 let pos = new THREE.Vector3(0,1.6,8);
 let vel = new THREE.Vector3();
 let onGround = false;
 let slideTimer = 0;
 let jumpQueued = false;
 const playerRadius = 0.35;
+const camHeightStand = 1.6, camHeightCrouch = 1.0;
+let camHeight = camHeightStand;
+
 const clock = new THREE.Clock();
 
-/* Weapons, HUD, kills */
+/* Weapons & HUD */
 const weapons = {
   ar: {name:'AR (Vandal)', speed:3.6, cooldown:0.12, dmg:1},
   pistol: {name:'Pistol', speed:4.6, cooldown:0.28, dmg:1},
@@ -135,58 +146,90 @@ const weaponNameEl = document.getElementById('weaponName');
 const killsEl = document.getElementById('kills');
 function updateHUD(){ weaponNameEl.textContent = weapons[currentWeapon].name; killsEl.textContent = kills; }
 updateHUD();
+function showMsg(t,ms=1200){ const el = document.getElementById('msg'); el.textContent = t; el.style.display='block'; setTimeout(()=>el.style.display='none', ms); }
 
-/* Shooting (hitscan for ar/pistol) */
-let canShoot = true;
-let shootCooldown = 0;
-window.addEventListener('mousedown', e=>{
-  if(document.pointerLockElement !== renderer.domElement) return;
-  if(e.button === 0 && canShoot){
-    if(currentWeapon === 'katana') return; // no LMB for katana
-    // hitscan: ray from camera
-    const origin = camera.position.clone();
-    const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
-    // enemy hit detection handled below in shootHitscan
-    shootHitscan(origin, dir);
-    canShoot = false;
-    shootCooldown = weapons[currentWeapon].cooldown;
-  }
-});
+/* Weapon models: attach to camera so they follow view */
+const weaponRoot = new THREE.Group();
+camera.add(weaponRoot);
+// position weaponRoot so it sits in front-right of camera
+weaponRoot.position.set(0.25,-0.25,-0.6);
 
-/* Enemy (simple sphere that chases and shoots projectiles) */
-const enemy = {
-  pos: new THREE.Vector3(0,0.7,-8),
-  vel: new THREE.Vector3(),
-  size: 0.7,
-  health: 5,
-  mesh: null,
-  shootCD: 0
-};
-const enemyGeo = new THREE.SphereGeometry(enemy.size, 12, 12);
-const enemyMat = new THREE.MeshStandardMaterial({color:0xff6666});
-enemy.mesh = new THREE.Mesh(enemyGeo, enemyMat);
+/* AR model — block rifle */
+const ar = new THREE.Group();
+const arBody = new THREE.Mesh(new THREE.BoxGeometry(0.9,0.12,0.16), new THREE.MeshStandardMaterial({color:0x222222}));
+arBody.position.set(0,-0.02,-0.25);
+ar.add(arBody);
+const arMag = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.18,0.06), new THREE.MeshStandardMaterial({color:0x151515}));
+arMag.position.set(-0.18,-0.12,-0.1); ar.add(arMag);
+const arBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.05,0.4), new THREE.MeshStandardMaterial({color:0x2a2a2a}));
+arBarrel.position.set(0,-0.02,-0.55);
+ar.add(arBarrel);
+ar.scale.set(0.9,0.9,0.9);
+ar.position.set(0.05,-0.05,0.0);
+
+/* Pistol model — small block */
+const pistol = new THREE.Group();
+const pBody = new THREE.Mesh(new THREE.BoxGeometry(0.35,0.09,0.12), new THREE.MeshStandardMaterial({color:0x1f1f2a}));
+pBody.position.set(0,-0.02,-0.22); pistol.add(pBody);
+const pGrip = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.15,0.06), new THREE.MeshStandardMaterial({color:0x111111}));
+pGrip.position.set(-0.10,-0.08,-0.14); pistol.add(pGrip);
+pistol.scale.set(1,1,1);
+pistol.position.set(0.05,-0.05,0);
+
+/* Katana futuristic model */
+const kat = new THREE.Group();
+// hilt
+const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.28,8), new THREE.MeshStandardMaterial({color:0x303030}));
+hilt.rotation.z = Math.PI/2; hilt.position.set(0.05,-0.02,-0.12);
+kat.add(hilt);
+// glowing blade (thin box with emissive)
+const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.02,1.0), new THREE.MeshStandardMaterial({color:0x77eeff,emissive:0x33ccff,transparent:true,opacity:0.95}));
+blade.position.set(0.05,-0.02,-0.62);
+kat.add(blade);
+kat.scale.set(0.8,0.8,0.8);
+kat.position.set(0.05,-0.05,0);
+
+/* Attach default weapon (AR) */
+weaponRoot.add(ar);
+
+/* Enemy */
+const enemy = { pos:new THREE.Vector3(0,0.7,-8), size:0.7, health:5, mesh:null, shootCD:0 };
+enemy.mesh = new THREE.Mesh(new THREE.SphereGeometry(enemy.size,12,12), new THREE.MeshStandardMaterial({color:0xff6666}));
 enemy.mesh.position.copy(enemy.pos);
 scene.add(enemy.mesh);
 
 /* Projectiles array */
 const projGeo = new THREE.SphereGeometry(0.12,8,8);
 const projMat = new THREE.MeshStandardMaterial({color:0xffff77});
-const projectiles = []; // {mesh, vel, life}
+const projectiles = [];
 
-/* Helper: hitscan checks against enemy */
+/* Shooting */
+let canShoot=true, shootCooldown=0;
+window.addEventListener('mousedown', e=>{
+  if(document.pointerLockElement !== renderer.domElement) return;
+  if(e.button !== 0) return;
+  if(!canShoot) return;
+  if(currentWeapon === 'katana') return;
+  // hitscan
+  const origin = camera.position.clone();
+  const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
+  shootHitscan(origin,dir);
+  canShoot=false; shootCooldown = weapons[currentWeapon].cooldown;
+});
+
+/* Hitscan check */
 function shootHitscan(origin, dir, max=200){
-  // check enemy sphere
-  const toEnemy = enemy.pos.clone().sub(origin);
-  const projLen = toEnemy.dot(dir);
+  const toE = enemy.pos.clone().sub(origin);
+  const projLen = toE.dot(dir);
   if(projLen > 0 && projLen < max){
-    const closestDist = toEnemy.clone().sub(dir.clone().multiplyScalar(projLen)).length();
+    const closestDist = toE.clone().sub(dir.clone().multiplyScalar(projLen)).length();
     if(closestDist < enemy.size){
       enemy.health -= weapons[currentWeapon].dmg;
       if(enemy.health <= 0){
         enemy.health = 5;
         kills++;
         updateHUD();
-        // respawn enemy somewhere
+        // respawn enemy
         enemy.pos.set((Math.random()-0.5)*20, enemy.size, (Math.random()-0.5)*20 - 8);
         enemy.mesh.position.copy(enemy.pos);
       }
@@ -198,30 +241,32 @@ function shootHitscan(origin, dir, max=200){
 function katanaSlash(){
   const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
   const slashPos = pos.clone().add(forward.multiplyScalar(1.2));
-  const d = slashPos.distanceTo(enemy.pos);
-  if(d < enemy.size + 0.8){
+  if(slashPos.distanceTo(enemy.pos) < enemy.size + 0.8){
     enemy.health -= weapons.katana.dmg;
-    if(enemy.health <= 0){
-      enemy.health = 5;
-      kills++;
-      updateHUD();
-      enemy.pos.set((Math.random()-0.5)*20, enemy.size, (Math.random()-0.5)*20 - 8);
-      enemy.mesh.position.copy(enemy.pos);
-    }
+    if(enemy.health <= 0){ enemy.health = 5; kills++; updateHUD(); enemy.pos.set((Math.random()-0.5)*20, enemy.size, (Math.random()-0.5)*20 - 8); enemy.mesh.position.copy(enemy.pos); }
   }
 }
 
-/* Pickup / drag cube logic */
-let holding = false;
-const holdDistance = 2.0;
-const holdSpringStiffness = 40;
-const holdDamping = 6;
+/* Equip logic with unlocks */
+function tryEquip(name){
+  if(name === 'pistol' && kills < 2){ showMsg('Pistol unlocks at 2 kills'); return; }
+  if(name === 'katana' && kills < 3){ showMsg('Katana unlocks at 3 kills'); return; }
+  if(currentWeapon === name) return;
+  // remove current model then add new
+  weaponRoot.clear();
+  currentWeapon = name;
+  if(name === 'ar') weaponRoot.add(ar);
+  if(name === 'pistol') weaponRoot.add(pistol);
+  if(name === 'katana') weaponRoot.add(kat);
+  updateHUD();
+}
 
-// Raycast helper to test looking at cube
-function getLookHit(){
+/* E press: pickup or slash */
+let holding = false;
+const holdDistance = 2.0, holdStiff = 40, holdDamp = 6;
+function getLookHitCube(){
   const rayOrigin = camera.position.clone();
   const rayDir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
-  // check cube bounding sphere first
   const toCube = cubeState.pos.clone().sub(rayOrigin);
   const proj = toCube.dot(rayDir);
   if(proj > 0 && proj < 4.5){
@@ -230,85 +275,50 @@ function getLookHit(){
   }
   return {hit:false};
 }
-
 function onEPress(){
-  // if looking at cube and in range, toggle hold
-  const hit = getLookHit();
-  if(hit.hit && !holding){
-    holding = true;
-    cubeState.held = true;
-    // reduce angular/linear velocity
-    cubeState.vel.set(0,0,0);
-  } else if(holding){
-    holding = false;
-    cubeState.held = false;
-  } else if(currentWeapon === 'katana'){
-    // also use E as slash for katana
-    katanaSlash();
-  }
+  const hit = getLookHitCube();
+  if(hit.hit && !holding){ holding = true; cubeState.held = true; cubeState.vel.set(0,0,0); }
+  else if(holding){ holding = false; cubeState.held = false; }
+  else if(currentWeapon === 'katana'){ katanaSlash(); }
 }
 
-/* Basic AABB collision for cube vs obstacles and world bounds */
-function cubeAABBCollide(state){
-  // ground collision
+/* cube physical collision helper */
+function cubeCollide(state){
+  // ground
   if(state.pos.y - state.size/2 < 0){
     state.pos.y = state.size/2;
-    if(state.vel.y < 0) state.vel.y = -state.vel.y * 0.2; // bounce small
+    if(state.vel.y < 0) state.vel.y = -state.vel.y * 0.2;
   }
-  // obstacle collisions (simple push-out)
-  obstacles.forEach(b=>{
-    const bmin = new THREE.Vector3().copy(b.position).addScaledVector(new THREE.Vector3(-0.5,-0.5,-0.5),1); // placeholder (we have size dims)
-    // we used actual sizes when created — but for simplicity, compute halfSizes from geometry
-    const box = b.geometry.parameters;
-    const hx = (box.width||box.width===0?box.width: (b.scale.x||1))/2 || 1;
-    const hy = (box.height||box.height===0?box.height: (b.scale.y||1))/2 || 1;
-    const hz = (box.depth||box.depth===0?box.depth: (b.scale.z||1))/2 || 1;
-    const min = b.position.clone().add(new THREE.Vector3(-hx,-hy,-hz));
-    const max = b.position.clone().add(new THREE.Vector3(hx,hy,hz));
-    // cube aabb
+  // obstacles
+  obstacles.forEach(o=>{
+    const min = o.mesh.position.clone().add(new THREE.Vector3(-o.hx,-o.hy,-o.hz));
+    const max = o.mesh.position.clone().add(new THREE.Vector3(o.hx,o.hy,o.hz));
     const cmin = state.pos.clone().addScalar(-state.size/2);
     const cmax = state.pos.clone().addScalar(state.size/2);
-    // overlap check
     if(cmin.x <= max.x && cmax.x >= min.x &&
        cmin.y <= max.y && cmax.y >= min.y &&
        cmin.z <= max.z && cmax.z >= min.z){
-      // compute push vector along smallest overlap axis
-      const overlaps = [
-        {axis:'x', val: Math.min(max.x - cmin.x, cmax.x - min.x)},
-        {axis:'y', val: Math.min(max.y - cmin.y, cmax.y - min.y)},
-        {axis:'z', val: Math.min(max.z - cmin.z, cmax.z - min.z)}
-      ];
-      overlaps.sort((a,b)=>a.val-b.val);
-      const primary = overlaps[0].axis;
-      if(primary === 'x'){
-        if(state.pos.x > b.position.x) state.pos.x += overlaps[0].val;
-        else state.pos.x -= overlaps[0].val;
-        state.vel.x = 0;
-      } else if(primary === 'y'){
-        if(state.pos.y > b.position.y) state.pos.y += overlaps[0].val;
-        else state.pos.y -= overlaps[0].val;
-        state.vel.y = 0;
-      } else {
-        if(state.pos.z > b.position.z) state.pos.z += overlaps[0].val;
-        else state.pos.z -= overlaps[0].val;
-        state.vel.z = 0;
-      }
+      // smallest overlap axis
+      const ox1 = max.x - cmin.x, ox2 = cmax.x - min.x; const ox = Math.min(ox1,ox2);
+      const oy1 = max.y - cmin.y, oy2 = cmax.y - min.y; const oy = Math.min(oy1,oy2);
+      const oz1 = max.z - cmin.z, oz2 = cmax.z - min.z; const oz = Math.min(oz1,oz2);
+      if(ox < oy && ox < oz){ if(state.pos.x < o.mesh.position.x) state.pos.x -= ox; else state.pos.x += ox; state.vel.x=0; }
+      else if(oy < oz){ if(state.pos.y < o.mesh.position.y) state.pos.y -= oy; else state.pos.y += oy; state.vel.y=0; }
+      else { if(state.pos.z < o.mesh.position.z) state.pos.z -= oz; else state.pos.z += oz; state.vel.z=0; }
     }
   });
 }
 
 /* Resize */
-window.addEventListener('resize', ()=> {
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+window.addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
-/* Main Update Loop */
+/* Main update loop */
+let pos = new THREE.Vector3(0,1.6,8);
+let vel = new THREE.Vector3();
 function update(){
   const dt = Math.min(0.05, clock.getDelta());
 
-  // camera quaternion (avoid Euler snapping)
+  // camera quaternion only from yaw/pitch
   const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), pitch);
   const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yaw);
   camera.quaternion.copy(qYaw).multiply(qPitch);
@@ -316,9 +326,7 @@ function update(){
   // gravity
   vel.y -= 20 * dt;
   pos.y += vel.y * dt;
-
-  // ground collision for player
-  if(pos.y <= 1.6){ pos.y = 1.6; vel.y = 0; onGround = true; } else { onGround = false; }
+  if(pos.y <= camHeight){ pos.y = camHeight; vel.y = 0; onGround = true; } else onGround=false;
 
   // movement
   const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).setY(0).normalize();
@@ -331,12 +339,12 @@ function update(){
   if(keys.s) moveDir.add(forward.clone().negate());
   if(keys.a) moveDir.add(right.clone().negate());
   if(keys.d) moveDir.add(right);
-  if(moveDir.length() > 0) moveDir.normalize();
+  if(moveDir.length()>0) moveDir.normalize();
   pos.addScaledVector(moveDir, speed * dt);
 
-  // slide
+  // slide (simplified, no heavy ops)
   if(keys.ctrl && keys.shift && onGround && slideTimer <= 0){
-    slideTimer = 0.5;
+    slideTimer = 0.45;
     camHeight = camHeightCrouch;
   }
   if(slideTimer > 0){
@@ -345,173 +353,97 @@ function update(){
   }
 
   // jump
-  if(keys.space && !jumpQueued){
-    if(onGround) vel.y = 7.8;
-    jumpQueued = true;
-  }
+  if(keys.space && !jumpQueued){ if(onGround) vel.y = 7.8; jumpQueued = true; }
   if(!keys.space) jumpQueued = false;
 
-  // simple wall pushback (so player doesn't go through obstacle boxes)
-  obstacles.forEach(b=>{
-    // derive half extents from geometry parameters, fallback conservative
-    const p = b.position;
-    const params = b.geometry.parameters || {};
-    const hx = (params.width || 2) / 2;
-    const hy = (params.height || 1) / 2;
-    const hz = (params.depth || 2) / 2;
-    // player aabb
+  // simple obstacle pushback for player (AABB)
+  obstacles.forEach(o=>{
     const pmin = pos.clone().add(new THREE.Vector3(-playerRadius, -1.0, -playerRadius));
     const pmax = pos.clone().add(new THREE.Vector3(playerRadius, 1.0, playerRadius));
-    const bmin = p.clone().add(new THREE.Vector3(-hx,-hy,-hz));
-    const bmax = p.clone().add(new THREE.Vector3(hx,hy,hz));
+    const bmin = o.mesh.position.clone().add(new THREE.Vector3(-o.hx,-o.hy,-o.hz));
+    const bmax = o.mesh.position.clone().add(new THREE.Vector3(o.hx,o.hy,o.hz));
     if(pmin.x <= bmax.x && pmax.x >= bmin.x &&
        pmin.y <= bmax.y && pmax.y >= bmin.y &&
        pmin.z <= bmax.z && pmax.z >= bmin.z){
-      // push out minimally on XZ plane
       const overlapX = Math.min(bmax.x - pmin.x, pmax.x - bmin.x);
       const overlapZ = Math.min(bmax.z - pmin.z, pmax.z - bmin.z);
-      if(overlapX < overlapZ){
-        if(pos.x < p.x) pos.x -= overlapX; else pos.x += overlapX;
-      } else {
-        if(pos.z < p.z) pos.z -= overlapZ; else pos.z += overlapZ;
-      }
+      if(overlapX < overlapZ){ if(pos.x < o.mesh.position.x) pos.x -= overlapX; else pos.x += overlapX; }
+      else { if(pos.z < o.mesh.position.z) pos.z -= overlapZ; else pos.z += overlapZ; }
     }
   });
 
   // cube physics
   if(cubeState.held){
-    // spring to hold point in front of camera
+    // spring toward target in front of camera
     const target = camera.position.clone().add(new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).multiplyScalar(holdDistance));
     const toTarget = target.clone().sub(cubeState.pos);
-    const force = toTarget.multiplyScalar(holdSpringStiffness).sub(cubeState.vel.clone().multiplyScalar(holdDamping));
+    const force = toTarget.multiplyScalar(holdStiff).sub(cubeState.vel.clone().multiplyScalar(holdDamp));
     const accel = force.clone().divideScalar(cubeState.mass);
     cubeState.vel.addScaledVector(accel, dt);
   } else {
-    // gravity
     cubeState.vel.y -= 20 * dt;
   }
-  // Integrate cube
   cubeState.pos.addScaledVector(cubeState.vel, dt);
-  // collisions with ground & obstacles
-  cubeAABBCollide(cubeState);
+  cubeCollide(cubeState);
   physCube.position.copy(cubeState.pos);
 
-  // projectiles update
+  // enemy AI : chase player on XZ
+  const toPlayer = pos.clone().sub(enemy.pos); toPlayer.y=0;
+  const dist = toPlayer.length();
+  if(dist > 0.3){ enemy.pos.addScaledVector(toPlayer.normalize(), 1.6 * dt); enemy.mesh.position.copy(enemy.pos); }
+  // enemy shoot
+  if(enemy.shootCD <= 0){
+    if(dist < 18){ // spawn projectile
+      const m = new THREE.Mesh(projGeo, projMat);
+      m.position.copy(enemy.pos).add(new THREE.Vector3(0,0.6,0));
+      scene.add(m);
+      const dirShoot = pos.clone().sub(enemy.pos); dirShoot.y=0; dirShoot.normalize();
+      projectiles.push({mesh:m, vel:dirShoot.multiplyScalar(8), life:4});
+      enemy.shootCD = 2.0;
+    } else enemy.shootCD = 0.2;
+  } else enemy.shootCD -= dt;
+
+  // update projectiles
   for(let i=projectiles.length-1;i>=0;i--){
-    const pr = projectiles[i];
-    pr.mesh.position.addScaledVector(pr.vel, dt);
-    pr.life -= dt;
-    // player hit test (sphere)
-    if(pr.mesh.position.distanceTo(pos) < playerRadius + 0.12){
-      // we won't implement player HP here; just remove
-      scene.remove(pr.mesh);
+    const p = projectiles[i];
+    p.mesh.position.addScaledVector(p.vel, dt);
+    p.life -= dt;
+    if(p.mesh.position.distanceTo(pos) < playerRadius + 0.12){
+      // hit player — no HP to show; remove
+      scene.remove(p.mesh);
       projectiles.splice(i,1);
       continue;
     }
-    if(pr.life <= 0){
-      scene.remove(pr.mesh);
-      projectiles.splice(i,1);
-    }
+    if(p.life <= 0){ scene.remove(p.mesh); projectiles.splice(i,1); }
   }
-
-  // enemy AI: chase player on XZ plane
-  const toPlayer = pos.clone().sub(enemy.pos);
-  toPlayer.y = 0;
-  const dist = toPlayer.length();
-  if(dist > 0.3){
-    const dirEnemy = toPlayer.normalize();
-    enemy.pos.addScaledVector(dirEnemy, 1.6 * dt); // enemy speed
-    enemy.mesh.position.copy(enemy.pos);
-  }
-  // enemy shoots periodically if in range
-  if(enemy.shootCD <= 0){
-    if(dist < 18){
-      // spawn projectile toward player
-      const m = new THREE.Mesh(projGeo, projMat);
-      const spawn = enemy.pos.clone().add(new THREE.Vector3(0,0.6,0));
-      m.position.copy(spawn);
-      scene.add(m);
-      const dirShoot = pos.clone().sub(enemy.pos);
-      dirShoot.y = 0;
-      dirShoot.normalize();
-      projectiles.push({mesh:m, vel:dirShoot.multiplyScalar(8), life:4});
-      enemy.shootCD = 2.0;
-    } else {
-      enemy.shootCD = 0.2;
-    }
-  } else enemy.shootCD -= dt;
 
   // shooting cooldown
-  if(!canShoot){
-    shootCooldown -= dt;
-    if(shootCooldown <= 0){ canShoot = true; shootCooldown = 0; }
-  }
+  if(!canShoot){ shootCooldown -= dt; if(shootCooldown <= 0){ canShoot=true; shootCooldown=0; } }
 
+  // weapon unlock auto-switch on kills (but user can manually swap)
+  if(kills >= 3 && currentWeapon !== 'katana'){ /* don't auto-switch if user changed; only auto if still ar? */ }
+  if(kills >= 2 && currentWeapon === 'ar'){ /* keep ar unless user swaps */ }
+
+  // place weapon visible (weapons are camera children)
   // camera position updated last
   camera.position.copy(pos);
-
-  // update HUD locks/unlocks
-  if(kills >= 3 && currentWeapon !== 'katana'){ currentWeapon = 'katana'; updateHUD(); }
-  else if(kills >= 2 && currentWeapon === 'ar'){ currentWeapon = 'pistol'; updateHUD(); }
 
   renderer.render(scene, camera);
   requestAnimationFrame(update);
 }
-
-/* Simple shooting with keyboard/mouse already tied to hitscan above. Katana via E also.
-   Note: allow katana slash on E press (we also used E for pickup — prioritized pickup) */
-
-window.addEventListener('keydown', e=>{
-  if(e.code === 'KeyF'){ // testing helper spawn enemy near player
-    enemy.pos.set(pos.x + (Math.random()-0.5)*6, enemy.size, pos.z - 8 + (Math.random()-0.5)*6);
-    enemy.mesh.position.copy(enemy.pos);
-  }
-});
-
-/* Helper: pickup and move cube collisions function implementation */
-function cubeAABBCollide(state){
-  // ground
-  if(state.pos.y - state.size/2 < 0){
-    state.pos.y = state.size/2;
-    if(state.vel.y < 0) state.vel.y = -state.vel.y * 0.2;
-  }
-  // obstacles
-  obstacles.forEach(b=>{
-    const params = b.geometry.parameters || {};
-    const hx = (params.width || 2)/2;
-    const hy = (params.height || 1)/2;
-    const hz = (params.depth || 2)/2;
-    const min = b.position.clone().add(new THREE.Vector3(-hx,-hy,-hz));
-    const max = b.position.clone().add(new THREE.Vector3(hx,hy,hz));
-    const cmin = state.pos.clone().addScalar(-state.size/2);
-    const cmax = state.pos.clone().addScalar(state.size/2);
-    if(cmin.x <= max.x && cmax.x >= min.x &&
-       cmin.y <= max.y && cmax.y >= min.y &&
-       cmin.z <= max.z && cmax.z >= min.z){
-      // smallest overlap axis push
-      const ox1 = max.x - cmin.x, ox2 = cmax.x - min.x;
-      const oy1 = max.y - cmin.y, oy2 = cmax.y - min.y;
-      const oz1 = max.z - cmin.z, oz2 = cmax.z - min.z;
-      const ox = Math.min(ox1, ox2), oy = Math.min(oy1, oy2), oz = Math.min(oz1, oz2);
-      if(ox < oy && ox < oz){
-        // push in x
-        if(state.pos.x < b.position.x) state.pos.x -= ox; else state.pos.x += ox;
-        state.vel.x = 0;
-      } else if(oy < oz){
-        if(state.pos.y < b.position.y) state.pos.y -= oy; else state.pos.y += oy;
-        state.vel.y = 0;
-      } else {
-        if(state.pos.z < b.position.z) state.pos.z -= oz; else state.pos.z += oz;
-        state.vel.z = 0;
-      }
-    }
-  });
-}
-
-/* Left-click is hitscan; ensure shoot handler registered earlier
-   E picks/releases cube; if not picking, E acts as katana slash (handled in onEPress) */
-
 update();
+
+/* Utility: message and testing */
+window.addEventListener('keydown', e=>{ if(e.code==='KeyF'){ enemy.pos.set(pos.x + (Math.random()-0.5)*6, enemy.size, pos.z - 8 + (Math.random()-0.5)*6); enemy.mesh.position.copy(enemy.pos); } });
+
+/* Done: initial weapon setup */
+function initWeapons(){
+  weaponRoot.clear();
+  currentWeapon = 'ar';
+  weaponRoot.add(ar);
+  updateHUD();
+}
+initWeapons();
 
 </script>
 </body>
