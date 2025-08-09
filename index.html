@@ -70,6 +70,14 @@
     wall2.position.set(3,2.5,0);
     scene.add(wall2);
 
+    // === Player Box (just for debugging, visible) ===
+    /*
+    const playerBoxGeo = new THREE.BoxGeometry(0.5, camHeightStand, 0.5);
+    const playerBoxMat = new THREE.MeshStandardMaterial({color:0x2233aa, transparent:true, opacity:0.5});
+    const playerBox = new THREE.Mesh(playerBoxGeo, playerBoxMat);
+    scene.add(playerBox);
+    */
+
     // === Player ===
     const keys = {w:0,a:0,s:0,d:0,shift:0,ctrl:0,space:0};
     addEventListener('keydown', e=>{
@@ -100,7 +108,7 @@
     });
     renderer.domElement.addEventListener('click', ()=>renderer.domElement.requestPointerLock());
 
-    let pos = new THREE.Vector3(0, camHeightStand, 5);
+    let pos = new THREE.Vector3(0, camHeightStand, 15);
     let vel = new THREE.Vector3();
     let onGround = false;
     let slideTimer = 0;
@@ -116,10 +124,8 @@
     };
     let currentWeapon = "ar";
 
-    // Kill count for weapon unlocks
     let killCount = 0;
 
-    // Update HUD elements
     const weaponNameEl = document.getElementById("weaponName");
     const killCountEl = document.getElementById("killCount");
 
@@ -144,11 +150,9 @@
     // Enemy projectile
     const projGeo = new THREE.SphereGeometry(0.1, 8, 8);
     const projMat = new THREE.MeshStandardMaterial({color:0xffff55});
-    let projectiles = []; // each: {mesh, velocity}
+    let projectiles = [];
 
-    // === Functions ===
-
-    // Wall collision
+    // Wall collision helpers
     function checkWallCollision(pos, wall) {
       const halfWallWidth = 0.5;
       const halfWallLength = 5;
@@ -173,9 +177,8 @@
       pos.add(correction);
     }
 
-    // Simple hit test raycast for hitscan (AR and pistol)
+    // Hitscan raycast for AR & pistol
     function shootHitscan(origin, direction, maxDist=100){
-      // Enemy hit test
       const toEnemy = enemyPos.clone().sub(origin);
       const projLen = toEnemy.dot(direction);
       if(projLen > 0 && projLen < maxDist){
@@ -186,7 +189,6 @@
             enemyHealth = 5;
             killCount++;
             updateHUD();
-            // Reset enemy pos randomly
             enemyPos.set(
               (Math.random()-0.5)*30,
               enemySize/2,
@@ -200,7 +202,7 @@
       return false;
     }
 
-    // Katana melee hit check (simple sphere in front of player)
+    // Katana melee hit check
     function katanaSlash(){
       const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
       const slashPos = pos.clone().add(forward.multiplyScalar(1));
@@ -224,14 +226,12 @@
     // Enemy shooting cooldown
     let enemyShootCooldown = 0;
 
-    // Slide and crouch vars
-    let slideTimer = 0;
-
     // Player vars
     let onGround = false;
     let jumpQueued = false;
+    let canShoot = true;
+    let shootCooldown = 0;
 
-    // Movement speeds by weapon
     function getMoveSpeed(){
       if(currentWeapon === "ar") return 4;
       if(currentWeapon === "pistol") return 5;
@@ -239,18 +239,12 @@
       return 4;
     }
 
-    // Handle mouse click to shoot (if pointer locked)
-    let canShoot = true;
-    let shootCooldown = 0;
-
+    // Mouse shoot event
     window.addEventListener('mousedown', e=>{
       if(document.pointerLockElement !== renderer.domElement) return;
       if(e.button === 0 && canShoot){
-        if(currentWeapon === "katana"){
-          // No shooting with katana
-          return;
-        }
-        // Shoot hitscan
+        if(currentWeapon === "katana") return; // no shooting katana
+
         const origin = camera.position.clone();
         const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
         shootHitscan(origin, forward);
@@ -277,11 +271,9 @@
       }
     });
 
-    // === Main update loop ===
     function update(){
       const dt = Math.min(0.05, clock.getDelta());
 
-      // Update cooldown timers
       if(!canShoot){
         shootCooldown -= dt;
         if(shootCooldown <= 0){
@@ -293,18 +285,17 @@
         enemyShootCooldown -= dt;
       }
 
-      // Camera rotation with quaternions (no snapping)
+      // Camera rotation (quaternion, no snapping)
       const quatPitch = new THREE.Quaternion();
       const quatYaw = new THREE.Quaternion();
       quatPitch.setFromAxisAngle(new THREE.Vector3(1,0,0), pitch);
       quatYaw.setFromAxisAngle(new THREE.Vector3(0,1,0), yaw);
       camera.quaternion.copy(quatYaw).multiply(quatPitch);
 
-      // Gravity and vertical velocity
+      // Gravity & vertical velocity
       vel.y -= 20 * dt;
       pos.y += vel.y * dt;
 
-      // Ground collision
       if(pos.y <= camHeight){
         pos.y = camHeight;
         vel.y = 0;
@@ -313,12 +304,12 @@
         onGround = false;
       }
 
-      // Movement direction
+      // Movement
       const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
       const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
 
       let speed = getMoveSpeed();
-      if(keys.shift) speed *= 2; // Sprint multiplier
+      if(keys.shift) speed *= 2;
       if(slideTimer > 0) speed += 4;
 
       let dir = new THREE.Vector3();
@@ -332,31 +323,7 @@
       pos.x += horizontalMove.x;
       pos.z += horizontalMove.z;
 
-      // Wall collision check
-      function checkWallCollision(pos, wall) {
-        const halfWallWidth = 0.5;
-        const halfWallLength = 5;
-        const dx = pos.x - wall.position.x;
-        const dz = pos.z - 0;
-        let collided = false;
-        let correction = new THREE.Vector3(0,0,0);
-        if (Math.abs(dz) < halfWallLength + playerRadius) {
-          if (dx > - (halfWallWidth + playerRadius) && dx < (halfWallWidth + playerRadius)) {
-            collided = true;
-            if (dx > 0) correction.x = (halfWallWidth + playerRadius) - dx;
-            else correction.x = - (halfWallWidth + playerRadius) - dx;
-          }
-        }
-        return { collided, correction };
-      }
-      function resolveCollision(pos, correction) {
-        const maxPush = 0.1;
-        if (correction.x > maxPush) correction.x = maxPush;
-        if (correction.x < -maxPush) correction.x = -maxPush;
-        pos.add(correction);
-      }
-
-      // Check walls and resolve
+      // Wall collision
       let c1 = checkWallCollision(pos, wall1);
       if(c1.collided) resolveCollision(pos, c1.correction);
       let c2 = checkWallCollision(pos, wall2);
@@ -381,11 +348,11 @@
       }
       if(!keys.space) jumpQueued = false;
 
-      // Apply horizontal friction for any leftover velocity (from knockback or whatever)
+      // Apply friction
       pos.x += vel.x * dt;
       vel.x *= 0.85;
 
-      // Enemy AI movement - chase player on ground only
+      // Enemy AI: chase player on ground
       const enemyToPlayer = pos.clone().sub(enemyPos);
       enemyToPlayer.y = 0;
       const distToPlayer = enemyToPlayer.length();
@@ -395,11 +362,10 @@
         enemyMesh.position.copy(enemyPos);
       }
 
-      // Enemy shooting projectiles every 2 seconds when in range
+      // Enemy shooting projectiles
       if(enemyShootCooldown <= 0 && distToPlayer < 15){
         enemyShootCooldown = 2;
 
-        // Shoot projectile towards player
         const proj = new THREE.Mesh(projGeo, projMat);
         proj.position.copy(enemyPos).add(new THREE.Vector3(0,0.5,0));
         scene.add(proj);
@@ -416,27 +382,25 @@
         let p = projectiles[i];
         p.mesh.position.addScaledVector(p.velocity, dt);
 
-        // Check collision with player (simple sphere collision)
+        // Player hit test
         const dist = p.mesh.position.distanceTo(pos);
         if(dist < playerRadius + 0.1){
-          // Player got hit - For demo just console log
           console.log("Player HIT!");
           scene.remove(p.mesh);
           projectiles.splice(i,1);
           continue;
         }
 
-        // Remove if too far
         if(p.mesh.position.distanceTo(enemyPos) > 30){
           scene.remove(p.mesh);
           projectiles.splice(i,1);
         }
       }
 
-      // Update camera position
+      // Camera position
       camera.position.set(pos.x, pos.y, pos.z);
 
-      updateWeapon(); // check if need to switch weapons from kills
+      updateWeapon();
 
       renderer.render(scene, camera);
       requestAnimationFrame(update);
