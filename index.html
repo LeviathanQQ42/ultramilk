@@ -3,158 +3,144 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ULTRA MILK — Minimal</title>
+  <title>ULTRA MILK — Titanfall Movement Test</title>
   <style>
-    html,body{height:100%;margin:0;background:#111}
+    html,body{height:100%;margin:0;background:#111;overflow:hidden}
     canvas{display:block}
-    /* Crosshair */
     .crosshair{
       position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;pointer-events:none;z-index:10;
       display:flex;align-items:center;justify-content:center;
     }
     .crosshair:before{content:'';width:2px;height:12px;background:#fff;border-radius:2px}
     .crosshair:after{content:'';height:2px;width:12px;background:#fff;border-radius:2px;position:absolute}
-    /* Quick HUD */
     .hud{position:fixed;left:16px;bottom:16px;color:#ddd;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;z-index:10;opacity:0.9}
-    .hint{position:fixed;right:16px;bottom:16px;color:#aaa;font-family:monospace;z-index:10}
   </style>
 </head>
 <body>
   <div class="crosshair"></div>
-  <div class="hud">ULTRA MILK — Minimal</div>
-  <div class="hint">Click to lock pointer • WASD to move • Shift to sprint</div>
-
+  <div class="hud">Titanfall-Style Test — WASD move, Shift sprint, Space jump, Ctrl slide</div>
   <script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
   <script>
-    // Minimal ULTRA MILK: flat plane + free-camera (pointer lock + WASD)
-
-    // Scene, camera, renderer
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x6aa0ff); // sky-like
+    scene.background = new THREE.Color(0x6aa0ff);
 
     const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
-    camera.position.set(0, 1.6, 5); // player eye height
+    let camHeightStand = 1.6;
+    let camHeightCrouch = 1.0;
+    let camHeight = camHeightStand;
 
     const renderer = new THREE.WebGLRenderer({antialias:true});
-    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(innerWidth, innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // Lights
     const amb = new THREE.AmbientLight(0xffffff, 0.6);
     scene.add(amb);
     const dir = new THREE.DirectionalLight(0xffffff, 0.8);
     dir.position.set(5,10,2);
     scene.add(dir);
 
-    // Ground plane
-    const groundGeo = new THREE.PlaneGeometry(200,200);
-    const groundMat = new THREE.MeshStandardMaterial({color:0x6f9450, metalness:0.1, roughness:0.9});
-    const ground = new THREE.Mesh(groundGeo, groundMat);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(200,200), new THREE.MeshStandardMaterial({color:0x6f9450}));
     ground.rotation.x = -Math.PI/2;
-    ground.receiveShadow = true;
     scene.add(ground);
 
-    // Some props: a few boxes for visual reference
-    const boxGeo = new THREE.BoxGeometry(1,1,1);
-    const boxMat = new THREE.MeshStandardMaterial({color:0xffffff});
-    for(let i=0;i<12;i++){
-      const m = new THREE.Mesh(boxGeo, boxMat.clone());
-      m.material.color.setHSL(Math.random()*0.2+0.05,0.6,0.5);
-      m.position.set((Math.random()-0.5)*50,0.5,(Math.random()-0.5)*50);
-      m.rotation.y = Math.random()*Math.PI*2;
-      scene.add(m);
-    }
+    // Two walls for wall jumping
+    const wallMat = new THREE.MeshStandardMaterial({color:0x888888});
+    const wallGeo = new THREE.BoxGeometry(1,5,10);
+    const wall1 = new THREE.Mesh(wallGeo, wallMat);
+    wall1.position.set(-3,2.5,0);
+    scene.add(wall1);
+    const wall2 = wall1.clone();
+    wall2.position.set(3,2.5,0);
+    scene.add(wall2);
 
-    // Controls state
-    const keys = {w:false,a:false,s:false,d:false,shift:false};
-    window.addEventListener('keydown', e => {
-      if(e.code === 'KeyW') keys.w = true;
-      if(e.code === 'KeyA') keys.a = true;
-      if(e.code === 'KeyS') keys.s = true;
-      if(e.code === 'KeyD') keys.d = true;
-      if(e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = true;
+    const keys = {w:0,a:0,s:0,d:0,shift:0,ctrl:0};
+    addEventListener('keydown', e=>{if(e.code==='KeyW')keys.w=1;if(e.code==='KeyA')keys.a=1;if(e.code==='KeyS')keys.s=1;if(e.code==='KeyD')keys.d=1;if(e.code==='ShiftLeft')keys.shift=1;if(e.code==='ControlLeft')keys.ctrl=1;});
+    addEventListener('keyup', e=>{if(e.code==='KeyW')keys.w=0;if(e.code==='KeyA')keys.a=0;if(e.code==='KeyS')keys.s=0;if(e.code==='KeyD')keys.d=0;if(e.code==='ShiftLeft')keys.shift=0;if(e.code==='ControlLeft')keys.ctrl=0;});
+
+    // Pointer lock smooth look
+    let yaw=0,pitch=0;
+    addEventListener('mousemove', e=>{
+      if(document.pointerLockElement!==renderer.domElement) return;
+      yaw -= e.movementX*0.002;
+      pitch -= e.movementY*0.002;
+      pitch = Math.max(-Math.PI/2+0.01, Math.min(Math.PI/2-0.01, pitch));
     });
-    window.addEventListener('keyup', e => {
-      if(e.code === 'KeyW') keys.w = false;
-      if(e.code === 'KeyA') keys.a = false;
-      if(e.code === 'KeyS') keys.s = false;
-      if(e.code === 'KeyD') keys.d = false;
-      if(e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = false;
-    });
+    renderer.domElement.addEventListener('click',()=>renderer.domElement.requestPointerLock());
 
-    // Pointer lock & mouse look
-    let yaw = 0, pitch = 0; // radians
-    const PI_2 = Math.PI/2;
-    function onMouseMove(e){
-      if(document.pointerLockElement !== renderer.domElement) return;
-      const movementX = e.movementX || 0;
-      const movementY = e.movementY || 0;
-      const sensitivity = 0.002;
-      yaw -= movementX * sensitivity;
-      pitch -= movementY * sensitivity;
-      pitch = Math.max(-PI_2 + 0.01, Math.min(PI_2 - 0.01, pitch));
-    }
-    document.addEventListener('mousemove', onMouseMove, false);
-
-    renderer.domElement.addEventListener('click', ()=>{
-      renderer.domElement.requestPointerLock();
-    });
-
-    // Resize
-    window.addEventListener('resize', ()=>{
-      camera.aspect = innerWidth/innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(innerWidth, innerHeight);
-    });
-
-    // Movement update
-    const velocity = new THREE.Vector3();
-    const direction = new THREE.Vector3();
-    const up = new THREE.Vector3(0,1,0);
+    // Movement physics
+    let pos = new THREE.Vector3(0,camHeightStand,5);
+    let vel = new THREE.Vector3();
+    let onGround = false;
+    let canWallJump = false;
+    let slideTimer = 0;
 
     const clock = new THREE.Clock();
 
-    function animate(){
+    function update(){
       const dt = Math.min(0.05, clock.getDelta());
+      // Gravity
+      vel.y -= 20*dt;
+      // Ground check
+      if(pos.y <= camHeight){
+        pos.y = camHeight;
+        vel.y = 0;
+        onGround = true;
+      } else {
+        onGround = false;
+      }
 
-      // Build forward/right vectors from yaw
-      const cosYaw = Math.cos(yaw);
-      const sinYaw = Math.sin(yaw);
-      const forward = new THREE.Vector3(-sinYaw, 0, -cosYaw).normalize();
-      const right = new THREE.Vector3(cosYaw, 0, -sinYaw).normalize();
+      // Wall check for wall jump reset
+      canWallJump = false;
+      if(!onGround){
+        if(Math.abs(pos.x - wall1.position.x) < 0.6 && pos.z < 5 && pos.z > -5) canWallJump = true;
+        if(Math.abs(pos.x - wall2.position.x) < 0.6 && pos.z < 5 && pos.z > -5) canWallJump = true;
+      }
 
-      direction.set(0,0,0);
-      if(keys.w) direction.add(forward);
-      if(keys.s) direction.add(forward.clone().negate());
-      if(keys.a) direction.add(right.clone().negate());
-      if(keys.d) direction.add(right);
-      direction.normalize();
+      // Input movement
+      const forward = new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+      const right = new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0)).negate();
+      let speed = keys.shift?8:4;
+      if(slideTimer>0) speed += 4;
 
-      const baseSpeed = keys.shift ? 10 : 4; // m/s (sprint if shift)
-      // Smooth acceleration
-      const target = direction.multiplyScalar(baseSpeed);
-      velocity.lerp(target, 1 - Math.pow(0.001, dt));
+      let dir = new THREE.Vector3();
+      if(keys.w) dir.add(forward);
+      if(keys.s) dir.add(forward.clone().negate());
+      if(keys.a) dir.add(right.clone().negate());
+      if(keys.d) dir.add(right);
+      if(dir.length()>0) dir.normalize();
 
-      // Move camera horizontally (keep y constant)
-      camera.position.addScaledVector(velocity, dt);
-      camera.position.y = 1.6; // enforce eye height on flat plane
+      pos.addScaledVector(dir, speed*dt);
 
-      // Apply rotation from yaw/pitch
+      // Slide logic
+      if(keys.ctrl && keys.shift && onGround && slideTimer<=0){
+        slideTimer = 0.6; // slide duration
+        camHeight = camHeightCrouch;
+      }
+      if(slideTimer>0){
+        slideTimer -= dt;
+        if(slideTimer<=0) camHeight = camHeightStand;
+      }
+
+      // Jump
+      document.onkeydown = function(ev){
+        if(ev.code==='Space'){
+          if(onGround){vel.y = 8;onGround=false;}
+          else if(canWallJump){vel.y = 8; // push off wall
+            if(Math.abs(pos.x - wall1.position.x) < 1) vel.x = 5;
+            if(Math.abs(pos.x - wall2.position.x) < 1) vel.x = -5;
+          }
+        }
+      }
+
+      pos.addScaledVector(vel, dt);
+
+      camera.position.set(pos.x, pos.y, pos.z);
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
-
-      renderer.render(scene, camera);
-      requestAnimationFrame(animate);
+      renderer.render(scene,camera);
+      requestAnimationFrame(update);
     }
 
-    animate();
-
-    // Friendly fallback if pointer lock denied: show mouse cursor and let user drag
-    // (Already handled: pointer lock required for mouse-look, otherwise user can still use keyboard to move)
-
-    // Prevent context menu on right-click
-    window.addEventListener('contextmenu', e=>e.preventDefault());
-
+    update();
   </script>
 </body>
 </html>
