@@ -1,456 +1,567 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Ultra Milk — Playable Build</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ultra Milk — Playable</title>
 <style>
-  html,body{height:100%;margin:0;background:#0b1220;overflow:hidden;font-family:Segoe UI,Roboto,Arial}
+  html,body{height:100%;margin:0;background:#071827;overflow:hidden;font-family:system-ui,Segoe UI,Roboto,Arial}
   canvas{display:block}
-  .crosshair{position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;pointer-events:none;z-index:40}
+  .crosshair{position:fixed;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;pointer-events:none;z-index:50}
   .crosshair:before{content:'';position:absolute;left:9px;top:4px;width:2px;height:12px;background:#fff;border-radius:1px}
   .crosshair:after{content:'';position:absolute;top:9px;left:4px;height:2px;width:12px;background:#fff;border-radius:1px}
-  #hud { position: fixed; left: 12px; top: 12px; z-index:60; color:#e6eef7; background:rgba(0,0,0,0.45); padding:8px 10px; border-radius:8px; font-weight:600; }
-  #hud .health { width:180px; height:14px; background:#222; border-radius:6px; overflow:hidden; margin-top:6px; }
-  #hud .health > i { display:block; height:100%; background:linear-gradient(90deg,#2fdcff,#36ffa6); width:100%; }
-  #weaponHUD { position: fixed; right: 12px; top: 12px; z-index:60; color:#e6eef7; background:rgba(0,0,0,0.45); padding:8px 10px; border-radius:8px; font-weight:600; }
-  #msg{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:60;color:#fff;background:rgba(0,0,0,0.5);padding:6px 10px;border-radius:6px;display:none}
-  .hint{position:fixed;left:12px;bottom:12px;color:#9fb0c6;z-index:50}
+  #hud{position:fixed;left:12px;top:12px;z-index:60;color:#e6eef7;background:rgba(0,0,0,0.45);padding:8px;border-radius:8px}
+  #hud .health{width:180px;height:14px;background:#222;border-radius:6px;overflow:hidden;margin-top:8px}
+  #hud .health>i{display:block;height:100%;background:linear-gradient(90deg,#2fdcff,#36ffa6);width:100%}
+  #weaponHUD{position:fixed;right:12px;top:12px;z-index:60;color:#e6eef7;background:rgba(0,0,0,0.45);padding:8px;border-radius:8px}
+  #msg{position:fixed;left:50%;top:8%;transform:translateX(-50%);z-index:80;color:#fff;background:rgba(0,0,0,0.6);padding:8px 12px;border-radius:8px;display:none}
+  .hint{position:fixed;left:12px;bottom:12px;color:#9fb0c6;z-index:60}
+  #deathOverlay{position:fixed;left:0;top:0;width:100%;height:100%;background:black;opacity:0;display:flex;align-items:center;justify-content:center;z-index:200;pointer-events:none}
+  #deathUI{color:#fff;text-align:center;pointer-events:auto;display:none}
+  button{background:#222;color:#fff;border:1px solid #444;padding:10px 14px;border-radius:6px;cursor:pointer}
 </style>
 </head>
 <body>
   <div class="crosshair"></div>
-  <div id="hud">
-    HP: <span id="hpText">100%</span>
+  <div id="hud">HP: <span id="hpText">100%</span>
     <div class="health"><i id="hpBar" style="width:100%"></i></div>
   </div>
   <div id="weaponHUD">Weapon: <span id="weaponName">AR</span> • Kills: <span id="kills">0</span></div>
   <div id="msg"></div>
   <div class="hint">Click to lock • WASD • Shift sprint • Ctrl+Shift slide • Space jump • E pickup/slash • LMB shoot • 1/2/3 swap</div>
 
-  <!-- Three r149 (global THREE) + GLTFLoader (examples) -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js"></script>
-  <!-- Cannon global build -->
-  <script src="https://cdn.jsdelivr.net/gh/schteppe/cannon.js@master/build/cannon.min.js"></script>
+  <div id="deathOverlay"><div id="deathUI"><h1>You Died</h1><p>Press Retry to try again</p><button id="retryBtn">Retry</button></div></div>
 
-  <script>
-  (function(){
-    // ------------- CONFIG: update these if you move models -------------
-    const MODEL_PATHS = {
-      ar: 'https://leviathanqq42.github.io/ultramilk/models/ar-181.glb',
-      pistol: 'https://leviathanqq42.github.io/ultramilk/models/futuristic_revolver_fortunate_firearms.glb',
-      katana: 'https://leviathanqq42.github.io/ultramilk/models/sci-fi_futuristic_katana.glb'
-    };
-    // ------------------------------------------------------------------
+<script type="module">
+/* ---------------------------
+   Imports (ES modules)
+   --------------------------- */
+import * as THREE from 'https://unpkg.com/three@0.158.0/build/three.module.js';
+import { GLTFLoader } from 'https://unpkg.com/three@0.158.0/examples/jsm/loaders/GLTFLoader.js';
+import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js';
 
-    // Basic three + renderer
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x7fb7ff);
+/* ---------------------------
+   Config: model URLs (GitHub Pages)
+   --------------------------- */
+const MODEL_URLS = {
+  ar:  'https://leviathanqq42.github.io/ultramilk/models/ar-181.glb',
+  pistol: 'https://leviathanqq42.github.io/ultramilk/models/futuristic_revolver_fortunate_firearms.glb',
+  katana: 'https://leviathanqq42.github.io/ultramilk/models/sci-fi_futuristic_katana.glb'
+};
 
-    const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({antialias:true});
-    renderer.setSize(innerWidth, innerHeight);
-    document.body.appendChild(renderer.domElement);
+/* ---------------------------
+   Three + Renderer
+   --------------------------- */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x7fb7ff);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
-    dirLight.position.set(5,10,2);
-    scene.add(dirLight);
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
 
-    // Physics world (CANNON)
-    const world = new CANNON.World();
-    world.gravity.set(0, -30, 0);
-    world.broadphase = new CANNON.SAPBroadphase(world);
-    world.defaultContactMaterial.friction = 0.4;
+/* Lights */
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+dir.position.set(5,10,2); scene.add(dir);
 
-    // ground (visual + phys)
-    const groundMat = new THREE.MeshStandardMaterial({color:0x6f9450});
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(200,200), groundMat);
-    ground.rotation.x = -Math.PI/2; scene.add(ground);
-    const groundBody = new CANNON.Body({ mass:0, shape: new CANNON.Plane() });
-    groundBody.quaternion.setFromEuler(-Math.PI/2,0,0);
-    world.addBody(groundBody);
+/* Ground */
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x6f9450 });
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200,200), groundMat);
+ground.rotation.x = -Math.PI/2; scene.add(ground);
 
-    // obstacles
-    const obstacles = [];
-    function addObstacle(x,y,z,sx,sy,sz,color){
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), new THREE.MeshStandardMaterial({color}));
-      mesh.position.set(x, y + sy/2, z); scene.add(mesh);
-      const body = new CANNON.Body({ mass:0, shape: new CANNON.Box(new CANNON.Vec3(sx/2, sy/2, sz/2)) });
-      body.position.set(x, y + sy/2, z); world.addBody(body);
-      obstacles.push({mesh, body, hx:sx/2, hy:sy/2, hz:sz/2});
+/* ---------------------------
+   Physics world (cannon-es)
+   --------------------------- */
+const world = new CANNON.World({ gravity: new CANNON.Vec3(0,-30,0) });
+world.broadphase = new CANNON.SAPBroadphase(world);
+world.defaultContactMaterial.friction = 0.4;
+
+/* Ground body */
+const groundBody = new CANNON.Body({ mass:0 });
+groundBody.addShape(new CANNON.Plane());
+groundBody.quaternion.setFromEuler(-Math.PI/2,0,0);
+world.addBody(groundBody);
+
+/* ---------------------------
+   Obstacles (visual + phys)
+   --------------------------- */
+const obstacles = [];
+function addObstacle(x,y,z,sx,sy,sz,color=0x777777){
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), new THREE.MeshStandardMaterial({color}));
+  mesh.position.set(x, y + sy/2, z); scene.add(mesh);
+  const boxShape = new CANNON.Box(new CANNON.Vec3(sx/2, sy/2, sz/2));
+  const body = new CANNON.Body({ mass:0, shape: boxShape, position: new CANNON.Vec3(x, y+sy/2, z) });
+  world.addBody(body);
+  obstacles.push({mesh, body, hx:sx/2, hy:sy/2, hz:sz/2});
+}
+addObstacle(-6,0,-2,2,1,2,0x8a7d6b);
+addObstacle(5,0,1,2,1,2,0x8a7d6b);
+addObstacle(0,0,-6,3,2,1,0x666666);
+addObstacle(-4,0,6,3,2,1,0x666666);
+addObstacle(3,0,6,3,1,3,0x7b6f57);
+
+/* ---------------------------
+   Draggable Cube (physics body)
+   --------------------------- */
+const cubeSize = 0.8;
+const cubeMesh = new THREE.Mesh(new THREE.BoxGeometry(cubeSize,cubeSize,cubeSize), new THREE.MeshStandardMaterial({color:0x33c3ff}));
+scene.add(cubeMesh);
+const cubeBody = new CANNON.Body({
+  mass: 4,
+  shape: new CANNON.Box(new CANNON.Vec3(cubeSize/2, cubeSize/2, cubeSize/2)),
+  position: new CANNON.Vec3(0,1,2),
+  linearDamping: 0.02,
+  angularDamping: 0.9
+});
+world.addBody(cubeBody);
+let cubeHeld = false;
+
+/* ---------------------------
+   Player (kinematic-ish)
+   --------------------------- */
+const player = {
+  pos: new THREE.Vector3(0,1.6,8),
+  vel: new THREE.Vector3(0,0,0),
+  radius: 0.35,
+  height: 1.6,
+  onGround: false,
+  hp: 100
+};
+
+/* ---------------------------
+   Enemy
+   --------------------------- */
+const enemy = {
+  pos: new CANNON.Vec3(0,0.7,-10),
+  size: 0.7,
+  health: 5,
+  mesh: new THREE.Mesh(new THREE.SphereGeometry(0.7,12,12), new THREE.MeshStandardMaterial({color:0xff6666})),
+  shootCD: 0
+};
+scene.add(enemy.mesh);
+enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z);
+
+/* Projectiles */
+const projectiles = [];
+
+/* ---------------------------
+   GLTF loader + weapon visuals
+   --------------------------- */
+const loader = new GLTFLoader();
+const weaponRoot = new THREE.Group();
+camera.add(weaponRoot);
+weaponRoot.position.set(0.25,-0.25,-0.6);
+
+const placeholders = {
+  ar: new THREE.Mesh(new THREE.BoxGeometry(0.6,0.12,0.16), new THREE.MeshStandardMaterial({color:0x151515})),
+  pistol: new THREE.Mesh(new THREE.BoxGeometry(0.36,0.09,0.12), new THREE.MeshStandardMaterial({color:0x0f0f12})),
+  katana: new THREE.Mesh(new THREE.BoxGeometry(0.06,0.02,1.0), new THREE.MeshStandardMaterial({color:0x88f0ff,emissive:0x33ccff}))
+};
+let models = { ar:null, pistol:null, katana:null };
+async function loadModels(){
+  async function safeLoad(url,key){
+    try{
+      const gltf = await loader.loadAsync(url);
+      models[key] = gltf.scene;
+      models[key].scale.setScalar(0.9);
+      models[key].position.set(0.03,-0.06,0);
+      console.log('loaded', key);
+    }catch(e){
+      console.warn('model load failed', key, e);
     }
-    addObstacle(-6,0,-2,2,1,2,0x8a7d6b);
-    addObstacle(5,0,1,2,1,2,0x8a7d6b);
-    addObstacle(0,0,-6,3,2,1,0x666666);
-    addObstacle(-4,0,6,3,2,1,0x666666);
-    addObstacle(3,0,6,3,1,3,0x7b6f57);
+  }
+  await Promise.all([
+    safeLoad(MODEL_URLS.ar,'ar'),
+    safeLoad(MODEL_URLS.pistol,'pistol'),
+    safeLoad(MODEL_URLS.katana,'katana')
+  ]);
+  // equip current weapon after load attempt
+  equip(currentWeapon);
+}
+loadModels();
 
-    // draggable cube (CANNON body + mesh)
-    const cubeSize = 0.8;
-    const cubeMesh = new THREE.Mesh(new THREE.BoxGeometry(cubeSize,cubeSize,cubeSize), new THREE.MeshStandardMaterial({color:0x33c3ff}));
-    scene.add(cubeMesh);
-    const cubeBody = new CANNON.Body({
-      mass: 4,
-      shape: new CANNON.Box(new CANNON.Vec3(cubeSize/2, cubeSize/2, cubeSize/2)),
-      position: new CANNON.Vec3(0,1,2)
-    });
-    world.addBody(cubeBody);
-    let cubeHeld = false;
+/* ---------------------------
+   Weapon config + HUD
+   --------------------------- */
+const WEAPONS = {
+  ar: { name:'AR', fireRate: 600, // RPM
+        spreadBase: 0.6, spreadMax: 6, recoilPerShot: 0.8, dmg:1, speed:3.2, automatic:true },
+  pistol: { name:'Pistol', fireRate: 300, spreadBase: 1.0, spreadMax: 5, recoilPerShot: 1.6, dmg:1, speed:4.6, automatic:false },
+  katana: { name:'Katana', fireRate: 0, spreadBase:0, spreadMax:0, recoilPerShot:0, dmg:3, speed:5.6, automatic:false }
+};
+let currentWeapon = 'ar';
+let kills = 0;
+let fireState = { firing:false, lastShot:0, sprayTime:0 }; // sprayTime increases while holding fire
 
-    // player state (simple kinematic)
-    const player = {
-      pos: new THREE.Vector3(0,1.6,8),
-      vel: new THREE.Vector3(0,0,0),
-      radius: 0.35,
-      height: 1.6,
-      onGround: false,
-      hp: 100
-    };
+const weaponNameEl = document.getElementById('weaponName');
+const killsEl = document.getElementById('kills');
+function updateHUD(){
+  weaponNameEl.textContent = currentWeapon.toUpperCase();
+  killsEl.textContent = kills;
+  document.getElementById('hpText').textContent = Math.max(0, Math.round(player.hp)) + '%';
+  document.getElementById('hpBar').style.width = Math.max(0, player.hp) + '%';
+}
+updateHUD();
 
-    // enemy
-    const enemy = {
-      pos: new CANNON.Vec3(0,0.7,-10),
-      size: 0.7,
-      health: 5,
-      mesh: new THREE.Mesh(new THREE.SphereGeometry(0.7,12,12), new THREE.MeshStandardMaterial({color:0xff6666})),
-      shootCD: 0
-    };
-    enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z);
-    scene.add(enemy.mesh);
+function equip(name){
+  if(name==='pistol' && kills < 2){ showMsg('Pistol unlocks at 2 kills'); return; }
+  if(name==='katana' && kills < 3){ showMsg('Katana unlocks at 3 kills'); return; }
+  currentWeapon = name;
+  while(weaponRoot.children.length) weaponRoot.remove(weaponRoot.children[0]);
+  if(models[name]) weaponRoot.add(models[name].clone());
+  else weaponRoot.add(placeholders[name]);
+  updateHUD();
+}
 
-    // projectiles
-    const projectiles = [];
+/* ---------------------------
+   Input & camera look (no X-axis snapping)
+   --------------------------- */
+const keyState = {};
+window.addEventListener('keydown', e=>{ keyState[e.code]=true; if(e.code==='KeyE') onE(); if(e.code==='Digit1') equip('ar'); if(e.code==='Digit2') equip('pistol'); if(e.code==='Digit3') equip('katana'); });
+window.addEventListener('keyup', e=>{ keyState[e.code]=false; });
 
-    // weapon visuals parented to camera
-    const weaponRoot = new THREE.Group();
-    camera.add(weaponRoot);
-    weaponRoot.position.set(0.25,-0.25,-0.6);
+let yaw = 0, pitch = 0;
+let ignoreMouseUntil = 0;
+const mouseClamp = 600;
+window.addEventListener('mousemove', e=>{
+  if(document.pointerLockElement !== renderer.domElement) return;
+  if(performance.now() < ignoreMouseUntil) return;
+  const dx = Math.max(-mouseClamp, Math.min(mouseClamp, e.movementX));
+  const dy = Math.max(-mouseClamp, Math.min(mouseClamp, e.movementY));
+  yaw -= dx * 0.0025;
+  pitch -= dy * 0.0025;
+  // clamp pitch - prevents flipping and huge snaps on X
+  pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, pitch));
+});
+renderer.domElement.addEventListener('click', ()=> { renderer.domElement.requestPointerLock(); });
+document.addEventListener('pointerlockchange', ()=> { ignoreMouseUntil = performance.now() + 50; });
 
-    // placeholders (used if GLB fails)
-    const placeholderAR = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.12,0.16), new THREE.MeshStandardMaterial({color:0x222}));
-    const placeholderPistol = new THREE.Mesh(new THREE.BoxGeometry(0.36,0.09,0.12), new THREE.MeshStandardMaterial({color:0x111}));
-    const placeholderKatana = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.02,1.0), new THREE.MeshStandardMaterial({color:0x88f0ff,emissive:0x33ccff}));
+/* Helper: create direction vector with spread based on pitch/yaw */
+function getShotDirection(spreadDeg){
+  // convert spread in degrees to small offsets in radians
+  const yawOff = (Math.random()-0.5) * THREE.MathUtils.degToRad(spreadDeg);
+  const pitchOff = (Math.random()-0.5) * THREE.MathUtils.degToRad(spreadDeg);
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch + pitchOff, yaw + yawOff, 0, 'YXZ'));
+  return new THREE.Vector3(0,0,-1).applyQuaternion(q).normalize();
+}
 
-    // attempt GLTFLoader (defensive)
-    let gltfLoader = null;
-    try {
-      if(typeof THREE.GLTFLoader !== 'undefined') gltfLoader = new THREE.GLTFLoader();
-      else if(typeof THREE !== 'undefined' && THREE.GLTFLoader === undefined && typeof THREE) {
-        // try global loader script (should be available from example include)
-        if(window.THREE && window.THREE.GLTFLoader) gltfLoader = new THREE.GLTFLoader();
-      }
-    } catch(e){
-      console.warn('GLTFLoader unavailable:', e);
-      gltfLoader = null;
-    }
+/* Firing controls */
+let canShoot = true;
+let shootCooldown = 0;
+window.addEventListener('mousedown', e=>{
+  if(document.pointerLockElement !== renderer.domElement) return;
+  if(e.button !== 0) return;
+  if(currentWeapon === 'katana'){ /* no LMB for katana */ return; }
+  fireState.firing = true;
+});
+window.addEventListener('mouseup', e=>{
+  if(e.button === 0) fireState.firing = false;
+});
 
-    const models = { ar:null, pistol:null, katana:null };
-    function loadModel(url, key){
-      if(!gltfLoader) return Promise.resolve();
-      return new Promise((res,rej)=>{
-        gltfLoader.load(url, gltf=>{
-          try{ models[key] = gltf.scene; console.log('Loaded', key); }catch(e){ console.warn(e); }
-          res();
-        }, undefined, err=>{
-          console.warn('Model load fail', key, err);
-          res(); // don't reject — fallback to placeholder
-        });
-      });
-    }
+/* Semi-auto pistol: on mousedown one shot, then require re-press */
+window.addEventListener('click', ()=>{ /* click handled by mousedown above */ });
 
-    // Try to load models but don't block startup
-    loadModel(MODEL_PATHS.ar,'ar');
-    loadModel(MODEL_PATHS.pistol,'pistol');
-    loadModel(MODEL_PATHS.katana,'katana');
-
-    // weapon metadata
-    const WEAPONS = {
-      ar: { name:'AR', cooldown:0.12, speed:3.6, dmg:1 },
-      pistol: { name:'Pistol', cooldown:0.28, speed:4.6, dmg:1 },
-      katana: { name:'Katana', cooldown:0.5, speed:5.2, dmg:3 }
-    };
-    let currentWeapon = 'ar';
-    let kills = 0;
-
-    // HUD elements
-    const weaponNameEl = document.getElementById('weaponName');
-    const killsEl = document.getElementById('kills'); // created by HUD
-    function updateHUD(){
-      document.getElementById('weaponName').innerText = currentWeapon.toUpperCase();
-      document.getElementById('kills').innerText = kills;
-      document.getElementById('hpText').innerText = Math.max(0, Math.round(player.hp)) + '%';
-      document.getElementById('hpBar').style.width = Math.max(0, player.hp) + '%';
-    }
-    updateHUD();
-
-    // equip function
-    function equip(name){
-      if(name === 'pistol' && kills < 2){ showMsg('Pistol unlocks at 2 kills'); return; }
-      if(name === 'katana' && kills < 3){ showMsg('Katana unlocks at 3 kills'); return; }
-      currentWeapon = name;
-      // swap model
-      while(weaponRoot.children.length) weaponRoot.remove(weaponRoot.children[0]);
-      if(models[name]){
-        const m = models[name].clone();
-        m.scale.setScalar(0.9);
-        m.position.set(0.03,-0.06,0);
-        weaponRoot.add(m);
-      } else {
-        if(name === 'ar') weaponRoot.add(placeholderAR);
-        if(name === 'pistol') weaponRoot.add(placeholderPistol);
-        if(name === 'katana') weaponRoot.add(placeholderKatana);
-      }
-      updateHUD();
-    }
-    equip('ar'); // default
-
-    function showMsg(t,ms=1200){ const el=document.getElementById('msg'); el.innerText=t; el.style.display='block'; setTimeout(()=>el.style.display='none',ms); }
-
-    // Input
-    const keys = {};
-    window.addEventListener('keydown', e=>{
-      keys[e.code]=true;
-      if(e.code === 'KeyE') onE();
-      if(e.code === 'Digit1') equip('ar');
-      if(e.code === 'Digit2') equip('pistol');
-      if(e.code === 'Digit3') equip('katana');
-    });
-    window.addEventListener('keyup', e=> keys[e.code]=false);
-
-    // mouse look with small ignore window
-    let yaw = 0, pitch = 0;
-    let ignoreUntil = 0;
-    const mouseClamp = 400;
-    window.addEventListener('mousemove', e=>{
-      if(document.pointerLockElement !== renderer.domElement) return;
-      if(performance.now() < ignoreUntil) return;
-      const dx = Math.max(-mouseClamp, Math.min(mouseClamp, e.movementX));
-      const dy = Math.max(-mouseClamp, Math.min(mouseClamp, e.movementY));
-      yaw -= dx * 0.0026;
-      pitch -= dy * 0.0026;
-      pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, pitch));
-    });
-    renderer.domElement.addEventListener('click', ()=> renderer.domElement.requestPointerLock());
-    document.addEventListener('pointerlockchange', ()=> { ignoreUntil = performance.now() + 40; });
-
-    // shooting
-    let canShoot = true, shootCD = 0;
-    window.addEventListener('mousedown', e=>{
-      if(document.pointerLockElement !== renderer.domElement) return;
-      if(e.button !== 0) return;
-      if(!canShoot) return;
-      if(currentWeapon === 'katana') return;
-      fire();
-    });
-    function fire(){
-      const origin = camera.position.clone();
-      const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
-      const toEnemy = new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z).sub(origin);
-      const proj = toEnemy.dot(dir);
-      if(proj > 0 && proj < 300){
-        const closest = toEnemy.clone().sub(dir.clone().multiplyScalar(proj)).length();
-        if(closest < enemy.size){
-          enemy.health -= WEAPONS[currentWeapon].dmg;
-          if(enemy.health <= 0){ enemy.health = 5; kills++; updateHUD(); enemy.pos.set((Math.random()-0.5)*20, enemy.size, (Math.random()-0.5)*20 - 8); enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z); }
-          // muzzle flash
-          const flash = new THREE.PointLight(0xffee88, 2, 4);
-          flash.position.copy(new THREE.Vector3().setFromMatrixPosition(weaponRoot.matrixWorld));
-          scene.add(flash);
-          setTimeout(()=>scene.remove(flash), 80);
-        }
-      }
-      // recoil
-      const start = weaponRoot.position.z;
-      const back = start - 0.06;
-      const t0 = performance.now();
-      function anim(now){
-        const t = Math.min(1, (now - t0)/120);
-        weaponRoot.position.z = start + (back - start) * Math.sin(t * Math.PI);
-        if(t < 1) requestAnimationFrame(anim);
-        else weaponRoot.position.z = 0;
-      }
-      requestAnimationFrame(anim);
-      canShoot = false; shootCD = WEAPONS[currentWeapon].cooldown;
-    }
-
-    // E: pickup or katana slash
-    function onE(){
-      const origin = camera.position.clone();
-      const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
-      const toCube = new THREE.Vector3(cubeBody.position.x, cubeBody.position.y, cubeBody.position.z).sub(origin);
-      const proj = toCube.dot(dir);
-      if(proj > 0 && proj < 4.5){
-        const closest = toCube.clone().sub(dir.clone().multiplyScalar(proj)).length();
-        if(closest < cubeSize*0.9){
-          cubeHeld = !cubeHeld;
-          if(cubeHeld){ cubeBody.velocity.set(0,0,0); cubeBody.angularVelocity.set(0,0,0); }
-          return;
-        }
-      }
-      if(currentWeapon === 'katana'){
-        const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
-        const slashPos = camera.position.clone().addScaledVector(fwd, 1.2);
-        if(slashPos.distanceTo(new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z)) < enemy.size + 0.8){
-          enemy.health -= WEAPONS.katana.dmg;
-          if(enemy.health <= 0){ enemy.health = 5; kills++; updateHUD(); enemy.pos.set((Math.random()-0.5)*20, enemy.size, (Math.random()-0.5)*20 - 8); enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z); }
-        }
-      }
-    }
-
-    // spawn enemy projectile
-    function spawnEnemyProjectile(origin, dir){
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.12,8,8), new THREE.MeshStandardMaterial({color:0xffff77}));
-      mesh.position.copy(origin);
-      scene.add(mesh);
-      projectiles.push({mesh, vel: dir.clone().multiplyScalar(8), life:4});
-    }
-
-    // helpers
-    function updateHUD(){ document.getElementById('weaponName').innerText = currentWeapon.toUpperCase(); document.getElementById('kills').innerText = kills; document.getElementById('hpText').innerText = Math.max(0, Math.round(player.hp)) + '%'; document.getElementById('hpBar').style.width = Math.max(0, player.hp) + '%'; }
-
-    // main loop
-    const clock = new THREE.Clock();
-    let slideTimer = 0;
-    let jumpQueued = false;
-
-    function stepPhysics(dt){
-      // cube hold spring
-      if(cubeHeld){
-        const target = new CANNON.Vec3(
-          camera.position.x - Math.sin(yaw) * 2.0,
-          camera.position.y,
-          camera.position.z - Math.cos(yaw) * 2.0
-        );
-        const k = 60, c = 8;
-        const f = new CANNON.Vec3(
-          (target.x - cubeBody.position.x) * k - cubeBody.velocity.x * c,
-          (target.y - cubeBody.position.y) * k - cubeBody.velocity.y * c,
-          (target.z - cubeBody.position.z) * k - cubeBody.velocity.z * c
-        );
-        cubeBody.applyForce(f);
-      }
-      world.step(1/60, dt, 3);
-    }
-
-    function update(){
-      const dt = Math.min(0.05, clock.getDelta());
-
-      // rotation
-      const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), pitch);
-      const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yaw);
-      camera.quaternion.copy(qYaw).multiply(qPitch);
-
-      // movement (W forward etc fixed)
-      const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).setY(0).normalize();
-      const right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion).setY(0).normalize();
-      const move = new THREE.Vector3();
-      if(keys['KeyW']) move.add(forward);
-      if(keys['KeyS']) move.add(forward.clone().negate());
-      if(keys['KeyA']) move.add(right.clone().negate());
-      if(keys['KeyD']) move.add(right);
-      if(move.length()>0) move.normalize();
-
-      const base = WEAPONS[currentWeapon].speed;
-      const sprint = keys['ShiftLeft'] ? 1.9 : 1.0;
-      const speed = base * sprint * (slideTimer > 0 ? 1.35 : 1.0);
-      player.pos.x += move.x * speed * dt;
-      player.pos.z += move.z * speed * dt;
-
-      // vertical
-      player.vel.y -= 30 * dt;
-      player.pos.y += player.vel.y * dt;
-
-      // ground collision
-      if(player.pos.y < player.height/2){ player.pos.y = player.height/2; player.vel.y = 0; player.onGround = true; } else player.onGround = false;
-
-      // obstacle stand detection (top)
-      for(const o of obstacles){
-        const topY = o.body.position.y + o.body.shapes[0].halfExtents.y;
-        const dx = Math.abs(player.pos.x - o.body.position.x);
-        const dz = Math.abs(player.pos.z - o.body.position.z);
-        if(dx < o.hx + player.radius && dz < o.hz + player.radius){
-          if(player.pos.y <= topY + player.height/2 + 0.2 && player.pos.y >= topY - 0.1){
-            player.pos.y = topY + player.height/2;
-            player.vel.y = 0;
-            player.onGround = true;
-          }
-        }
-      }
-
-      // slide
-      if(keys['ControlLeft'] && keys['ShiftLeft'] && player.onGround && slideTimer <= 0){ slideTimer = 0.45; }
-      if(slideTimer > 0){ slideTimer -= dt; }
-
-      // jump
-      if(keys['Space'] && !jumpQueued){ if(player.onGround){ player.vel.y = 8; player.onGround = false; } jumpQueued = true; }
-      if(!keys['Space']) jumpQueued = false;
-
-      // physics step
-      stepPhysics(dt);
-
-      // sync cube mesh
-      cubeMesh.position.copy(cubeBody.position);
-      cubeMesh.quaternion.copy(cubeBody.quaternion);
-
-      // enemy chase
-      const pVec = new THREE.Vector3(player.pos.x, player.pos.y, player.pos.z);
-      const eVec = new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z);
-      const toP = pVec.clone().sub(eVec); toP.y = 0;
-      const dist = toP.length();
-      if(dist > 0.3){
-        toP.normalize();
-        enemy.pos.x += toP.x * 1.6 * dt; enemy.pos.z += toP.z * 1.6 * dt;
+/* ---------------------------
+   Fire logic (hitscan) + recoil & spread
+   --------------------------- */
+function attemptFire(now){
+  const cfg = WEAPONS[currentWeapon];
+  if(!cfg || cfg.fireRate===0) return;
+  const rpm = cfg.fireRate;
+  const shotInterval = 60 / rpm; // seconds per shot
+  if(now - fireState.lastShot < shotInterval) return;
+  // compute spread based on sprayTime
+  const sprayFactor = Math.min(1, fireState.sprayTime / 1.2); // 0..1
+  const spread = cfg.spreadBase + (cfg.spreadMax - cfg.spreadBase) * sprayFactor;
+  const dir = getShotDirection(spread);
+  // hitscan check against enemy sphere
+  const origin = camera.position.clone();
+  const toEnemy = new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z).sub(origin);
+  const proj = toEnemy.dot(dir);
+  if(proj > 0 && proj < 400){
+    const closest = toEnemy.clone().sub(dir.clone().multiplyScalar(proj)).length();
+    if(closest < enemy.size){
+      enemy.health -= cfg.dmg;
+      if(enemy.health <= 0){
+        enemy.health = 5;
+        kills++;
+        updateHUD();
+        // respawn enemy
+        enemy.pos.set((Math.random()-0.5)*20, enemy.size, (Math.random()-0.5)*20 - 8);
         enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z);
       }
-      if(enemy.shootCD <= 0){
-        if(dist < 18){
-          const dir = pVec.clone().sub(eVec); dir.y=0; dir.normalize();
-          spawnEnemyProjectile(new THREE.Vector3(enemy.pos.x, enemy.pos.y + 0.4, enemy.pos.z), dir);
-          enemy.shootCD = 2.0;
-        } else enemy.shootCD = 0.2;
-      } else enemy.shootCD -= dt;
+    }
+  }
+  // muzzle flash
+  const flash = new THREE.PointLight(0xffee88, 1.6, 6);
+  const muzzlePosWorld = new THREE.Vector3().setFromMatrixPosition(weaponRoot.matrixWorld);
+  flash.position.copy(muzzlePosWorld);
+  scene.add(flash);
+  setTimeout(()=> scene.remove(flash), 80);
 
-      // projectiles
-      for(let i=projectiles.length-1;i>=0;i--){
-        const pr = projectiles[i];
-        pr.mesh.position.addScaledVector(pr.vel, dt);
-        pr.life -= dt;
-        if(pr.mesh.position.distanceTo(new THREE.Vector3(player.pos.x, player.pos.y, player.pos.z)) < player.radius + 0.12){
-          player.hp -= 10; if(player.hp < 0) player.hp = 0; updateHUD();
-          scene.remove(pr.mesh); projectiles.splice(i,1); continue;
-        }
-        if(pr.life <= 0){ scene.remove(pr.mesh); projectiles.splice(i,1); }
+  // recoil: kick pitch up by recoilPerShot degrees (then lerp back)
+  const recoil = cfg.recoilPerShot;
+  pitch = Math.max(-Math.PI/2+0.01, pitch - recoil*0.004); // small pitch change upward
+  // increase spray time for sustained fire (AR automatic)
+  fireState.sprayTime = Math.min(1.5, fireState.sprayTime + 0.06);
+
+  // record shot time
+  fireState.lastShot = now;
+  canShoot = false;
+  shootCooldown = shotInterval;
+}
+
+/* ---------------------------
+   Katana slash (E) handled in onE()
+   --------------------------- */
+
+/* ---------------------------
+   Pick-up cube (E)
+   --------------------------- */
+function onE(){
+  // raycast to cube
+  const origin = camera.position.clone();
+  const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
+  const toCube = new THREE.Vector3(cubeBody.position.x, cubeBody.position.y, cubeBody.position.z).sub(origin);
+  const proj = toCube.dot(dir);
+  if(proj > 0 && proj < 4.5){
+    const closest = toCube.clone().sub(dir.clone().multiplyScalar(proj)).length();
+    if(closest < cubeSize*0.9){
+      cubeHeld = !cubeHeld;
+      if(cubeHeld){
+        // switch to kinematic style: stop gravity / let us set position smoothly
+        cubeBody.type = CANNON.Body.KINEMATIC;
+        cubeBody.velocity.set(0,0,0);
+        cubeBody.angularVelocity.set(0,0,0);
+      } else {
+        cubeBody.type = CANNON.Body.DYNAMIC;
       }
-
-      // shoot cooldown
-      if(!canShoot){ shootCD -= dt; if(shootCD <= 0){ canShoot = true; shootCD = 0; } }
-
-      // camera position
-      camera.position.set(player.pos.x, player.pos.y, player.pos.z);
-
-      updateHUD();
-      renderer.render(scene, camera);
-      requestAnimationFrame(update);
+      return;
     }
-
-    function spawnEnemyProjectile(origin, dir){
-      const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.12,8,8), new THREE.MeshStandardMaterial({color:0xffff77}));
-      sphere.position.copy(origin); scene.add(sphere);
-      projectiles.push({mesh:sphere, vel: dir.clone().multiplyScalar(8), life:4});
+  }
+  // else katana slash if equipped
+  if(currentWeapon === 'katana'){
+    const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
+    const slashPos = camera.position.clone().addScaledVector(fwd, 1.2);
+    if(slashPos.distanceTo(new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z)) < enemy.size + 0.9){
+      enemy.health -= WEAPONS.katana.dmg;
+      if(enemy.health <= 0){ enemy.health = 5; kills++; updateHUD(); enemy.pos.set((Math.random()-0.5)*20, enemy.size, (Math.random()-0.5)*20 - 8); enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z); }
     }
+  }
+}
 
-    // small auto-equip after models (if they load)
-    setTimeout(()=>{ if(models.ar || models.pistol || models.katana) equip(currentWeapon); }, 2000);
+/* ---------------------------
+   Enemy projectile spawn
+   --------------------------- */
+function spawnEnemyProjectile(origin, dir){
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.12,8,8), new THREE.MeshStandardMaterial({color:0xffff77}));
+  mesh.position.copy(origin);
+  scene.add(mesh);
+  projectiles.push({mesh, vel: dir.clone().multiplyScalar(8), life:4});
+}
 
-    // start loop
-    update();
+/* ---------------------------
+   Camera snap protection + smoothing
+   --------------------------- */
+let targetPitch = pitch, targetYaw = yaw;
+function applyCameraSmoothing(){
+  // For now, we set camera quaternion directly from yaw/pitch to avoid Euler gimbal snaps.
+  // Additional smoothing can be applied if desired.
+  const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), pitch);
+  const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yaw);
+  camera.quaternion.copy(qYaw).multiply(qPitch);
+}
 
-    // resize
-    window.addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+/* ---------------------------
+   Death UI (BOTW-like fade)
+   --------------------------- */
+const deathOverlay = document.getElementById('deathOverlay');
+const deathUI = document.getElementById('deathUI');
+const retryBtn = document.getElementById('retryBtn');
+function showDeath(){
+  deathUI.style.display = 'block';
+  deathOverlay.style.pointerEvents = 'auto';
+  // fade in
+  let t=0;
+  deathOverlay.style.display = 'flex';
+  function fade(){
+    t = Math.min(1, t + 0.02);
+    deathOverlay.style.opacity = t;
+    if(t < 1) requestAnimationFrame(fade);
+  }
+  fade();
+}
+function hideDeath(){
+  deathUI.style.display = 'none';
+  deathOverlay.style.pointerEvents = 'none';
+  deathOverlay.style.opacity = 0;
+  deathOverlay.style.display = 'none';
+}
+retryBtn.addEventListener('click', ()=>{
+  // reset player and enemy
+  player.pos.set(0,1.6,8);
+  player.vel.set(0,0,0);
+  player.hp = 100;
+  enemy.health = 5;
+  kills = 0;
+  updateHUD();
+  hideDeath();
+});
 
-  })();
-  </script>
+/* ---------------------------
+   Main update loop
+   --------------------------- */
+const clock = new THREE.Clock();
+let slideTimer = 0;
+let jumpQueued = false;
+
+function update(){
+  const dt = Math.min(0.05, clock.getDelta());
+  // firing handling
+  const now = performance.now() / 1000;
+  if(fireState.firing){
+    if(WEAPONS[currentWeapon].automatic){
+      attemptFire(now);
+    } else {
+      // for semi-auto fire only on initial mousedown (we set firing true on mousedown)
+      if(fireState.lastShot === 0 || now - fireState.lastShot > (60/WEAPONS[currentWeapon].fireRate)){
+        attemptFire(now);
+      }
+    }
+  } else {
+    // reduce spray time when not firing
+    fireState.sprayTime = Math.max(0, fireState.sprayTime - dt * 1.6);
+  }
+  // cooldown maintenance
+  if(!canShoot){
+    shootCooldown -= dt;
+    if(shootCooldown <= 0){ canShoot = true; shootCooldown = 0; }
+  }
+
+  // camera apply
+  applyCameraSmoothing();
+
+  // movement vectors
+  const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).setY(0).normalize();
+  const right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion).setY(0).normalize();
+  let move = new THREE.Vector3();
+  if(keyState['KeyW']) move.add(forward);
+  if(keyState['KeyS']) move.add(forward.clone().negate());
+  if(keyState['KeyA']) move.add(right.clone().negate());
+  if(keyState['KeyD']) move.add(right);
+  if(move.length()>0) move.normalize();
+
+  const baseSpeed = WEAPONS[currentWeapon].speed;
+  const sprint = keyState['ShiftLeft'] ? 1.9 : 1.0;
+  const speed = baseSpeed * sprint * (slideTimer>0 ? 1.35 : 1.0);
+  player.pos.x += move.x * speed * dt;
+  player.pos.z += move.z * speed * dt;
+
+  // vertical physics
+  player.vel.y -= 30 * dt;
+  player.pos.y += player.vel.y * dt;
+
+  // ground
+  if(player.pos.y < player.height/2){ player.pos.y = player.height/2; player.vel.y = 0; player.onGround = true; } else player.onGround = false;
+
+  // obstacle standing test (so you can stand on boxes)
+  for(const o of obstacles){
+    const topY = o.body.position.y + o.body.shapes[0].halfExtents.y;
+    const dx = Math.abs(player.pos.x - o.body.position.x);
+    const dz = Math.abs(player.pos.z - o.body.position.z);
+    if(dx < o.hx + player.radius && dz < o.hz + player.radius){
+      if(player.pos.y <= topY + player.height/2 + 0.2 && player.pos.y >= topY - 0.1){
+        player.pos.y = topY + player.height/2;
+        player.vel.y = 0;
+        player.onGround = true;
+      }
+    }
+  }
+
+  // slide & jump
+  if(keyState['ControlLeft'] && keyState['ShiftLeft'] && player.onGround && slideTimer<=0){ slideTimer = 0.45; }
+  if(slideTimer>0){ slideTimer -= dt; }
+  if(keyState['Space'] && !jumpQueued){ if(player.onGround){ player.vel.y = 8; player.onGround = false; } jumpQueued = true; }
+  if(!keyState['Space']) jumpQueued = false;
+
+  // cube hold: if held, kinematic body moves to target ahead of camera
+  if(cubeHeld){
+    const target = new CANNON.Vec3(
+      camera.position.x - Math.sin(yaw) * 1.8,
+      camera.position.y - 0.1,
+      camera.position.z - Math.cos(yaw) * 1.8
+    );
+    // set kinematic position directly (kinematic bodies are controlled by setting position)
+    cubeBody.position.copy(target);
+    cubeBody.velocity.set(0,0,0);
+    cubeBody.angularVelocity.set(0,0,0);
+  }
+
+  // world step
+  world.step(1/60, dt, 3);
+
+  // sync cube mesh
+  cubeMesh.position.copy(cubeBody.position);
+  cubeMesh.quaternion.copy(cubeBody.quaternion);
+
+  // enemy AI chase
+  const pvec = new THREE.Vector3(player.pos.x, player.pos.y, player.pos.z);
+  const evec = new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z);
+  const toP = pvec.clone().sub(evec); toP.y = 0;
+  const dist = toP.length();
+  if(dist > 0.3){
+    const dir = toP.normalize();
+    enemy.pos.x += dir.x * 1.6 * dt;
+    enemy.pos.z += dir.z * 1.6 * dt;
+    enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z);
+  }
+  // enemy shoot
+  if(enemy.shootCD <= 0){
+    if(dist < 18){
+      const dir = pvec.clone().sub(evec); dir.y = 0; dir.normalize();
+      spawnEnemyProjectile(new THREE.Vector3(enemy.pos.x, enemy.pos.y+0.4, enemy.pos.z), dir);
+      enemy.shootCD = 2.0;
+    } else enemy.shootCD = 0.2;
+  } else enemy.shootCD -= dt;
+
+  // projectiles update
+  for(let i=projectiles.length-1;i>=0;i--){
+    const pr = projectiles[i];
+    pr.mesh.position.addScaledVector(pr.vel, dt);
+    pr.life -= dt;
+    if(pr.mesh.position.distanceTo(new THREE.Vector3(player.pos.x, player.pos.y, player.pos.z)) < player.radius + 0.12){
+      player.hp -= 10; if(player.hp < 0) player.hp = 0; updateHUD();
+      scene.remove(pr.mesh); projectiles.splice(i,1);
+      continue;
+    }
+    if(pr.life <= 0){ scene.remove(pr.mesh); projectiles.splice(i,1); }
+  }
+
+  // update camera position last
+  camera.position.set(player.pos.x, player.pos.y, player.pos.z);
+
+  // death?
+  if(player.hp <= 0){
+    showDeath();
+  }
+
+  updateHUD();
+  renderer.render(scene, camera);
+
+  requestAnimationFrame(update);
+}
+requestAnimationFrame(update);
+
+/* ---------------------------
+   Utility functions
+   --------------------------- */
+function showMsg(t,ms=1200){ const el = document.getElementById('msg'); el.textContent = t; el.style.display='block'; setTimeout(()=>el.style.display='none', ms); }
+function updateHUD(){ document.getElementById('weaponName').textContent = currentWeapon.toUpperCase(); document.getElementById('kills').textContent = kills; document.getElementById('hpText').textContent = Math.max(0, Math.round(player.hp)) + '%'; document.getElementById('hpBar').style.width = Math.max(0, player.hp) + '%'; }
+
+/* retry handled earlier by retryBtn listener in HTML */
+
+/* End module */
+</script>
 </body>
 </html>
