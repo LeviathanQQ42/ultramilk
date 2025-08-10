@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Ultra Milk — Stable Build (Three r149 + Cannon)</title>
+<title>Ultra Milk — Playable Build</title>
 <style>
   html,body{height:100%;margin:0;background:#0b1220;overflow:hidden;font-family:Segoe UI,Roboto,Arial}
   canvas{display:block}
@@ -28,426 +28,429 @@
   <div id="msg"></div>
   <div class="hint">Click to lock • WASD • Shift sprint • Ctrl+Shift slide • Space jump • E pickup/slash • LMB shoot • 1/2/3 swap</div>
 
-<!-- Use Three r149 (global THREE) and GLTFLoader from examples for r149 -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js"></script>
-<!-- Use old cannon global build -->
-<script src="https://cdn.jsdelivr.net/gh/schteppe/cannon.js@master/build/cannon.min.js"></script>
+  <!-- Three r149 (global THREE) + GLTFLoader (examples) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/GLTFLoader.js"></script>
+  <!-- Cannon global build -->
+  <script src="https://cdn.jsdelivr.net/gh/schteppe/cannon.js@master/build/cannon.min.js"></script>
 
-<script>
-/* Full game: physics + three, using global THREE and CANNON (no modules) */
-/* Model URLs (your GitHub Pages paths) */
-const MODEL_URLS = {
-  ar: 'https://leviathanqq42.github.io/ultramilk/models/ar-181.glb',
-  pistol: 'https://leviathanqq42.github.io/leviathanqq42/ultramilk/models/futuristic_revolver_fortunate_firearms.glb', // fallback corrected path if needed
-  katana: 'https://leviathanqq42.github.io/ultramilk/models/sci-fi_futuristic_katana.glb'
-};
-/* Note: if any 404, check the exact repo/page path; I attempt to load these but fall back to placeholders. */
+  <script>
+  (function(){
+    // ------------- CONFIG: update these if you move models -------------
+    const MODEL_PATHS = {
+      ar: 'https://leviathanqq42.github.io/ultramilk/models/ar-181.glb',
+      pistol: 'https://leviathanqq42.github.io/ultramilk/models/futuristic_revolver_fortunate_firearms.glb',
+      katana: 'https://leviathanqq42.github.io/ultramilk/models/sci-fi_futuristic_katana.glb'
+    };
+    // ------------------------------------------------------------------
 
-/* --- THREE Setup --- */
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x7fb7ff);
+    // Basic three + renderer
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x7fb7ff);
 
-const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(innerWidth, innerHeight);
-document.body.appendChild(renderer.domElement);
+    const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-const dirL = new THREE.DirectionalLight(0xffffff, 0.9);
-dirL.position.set(5,10,2); scene.add(dirL);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    dirLight.position.set(5,10,2);
+    scene.add(dirLight);
 
-/* --- Physics (CANNON) --- */
-const world = new CANNON.World();
-world.gravity.set(0, -30, 0);
-world.broadphase = new CANNON.SAPBroadphase(world);
-world.defaultContactMaterial.friction = 0.4;
+    // Physics world (CANNON)
+    const world = new CANNON.World();
+    world.gravity.set(0, -30, 0);
+    world.broadphase = new CANNON.SAPBroadphase(world);
+    world.defaultContactMaterial.friction = 0.4;
 
-/* ground body */
-const groundMaterial = new CANNON.Material('groundMat');
-const groundBody = new CANNON.Body({ mass:0, shape: new CANNON.Plane(), material: groundMaterial });
-groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
-world.addBody(groundBody);
+    // ground (visual + phys)
+    const groundMat = new THREE.MeshStandardMaterial({color:0x6f9450});
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(200,200), groundMat);
+    ground.rotation.x = -Math.PI/2; scene.add(ground);
+    const groundBody = new CANNON.Body({ mass:0, shape: new CANNON.Plane() });
+    groundBody.quaternion.setFromEuler(-Math.PI/2,0,0);
+    world.addBody(groundBody);
 
-/* ground visual */
-const groundMesh = new THREE.Mesh(new THREE.PlaneGeometry(200,200), new THREE.MeshStandardMaterial({color:0x6f9450}));
-groundMesh.rotation.x = -Math.PI/2; scene.add(groundMesh);
-
-/* --- Obstacles --- */
-const obstacles = [];
-function addObstacle(x,y,z,sx,sy,sz,color){
-  const geo = new THREE.BoxGeometry(sx,sy,sz);
-  const mat = new THREE.MeshStandardMaterial({color: color||0x777777});
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(x, y + sy/2, z);
-  scene.add(mesh);
-
-  const shape = new CANNON.Box(new CANNON.Vec3(sx/2, sy/2, sz/2));
-  const body = new CANNON.Body({ mass: 0, shape: shape });
-  body.position.set(x, y + sy/2, z);
-  world.addBody(body);
-
-  obstacles.push({mesh, body, hx: sx/2, hy: sy/2, hz: sz/2});
-}
-
-addObstacle(-6,0,-2,2,1,2,0x8a7d6b);
-addObstacle(5,0,1,2,1,2,0x8a7d6b);
-addObstacle(0,0,-6,3,2,1,0x666666);
-addObstacle(-4,0,6,3,2,1,0x666666);
-addObstacle(3,0,6,3,1,3,0x7b6f57);
-
-/* --- Draggable Cube --- */
-const cubeSize = 0.8;
-const cubeMesh = new THREE.Mesh(new THREE.BoxGeometry(cubeSize,cubeSize,cubeSize), new THREE.MeshStandardMaterial({color:0x33c3ff}));
-scene.add(cubeMesh);
-const cubeBody = new CANNON.Body({
-  mass: 4,
-  shape: new CANNON.Box(new CANNON.Vec3(cubeSize/2, cubeSize/2, cubeSize/2)),
-  position: new CANNON.Vec3(0, 1, 2),
-});
-world.addBody(cubeBody);
-let cubeHeld = false;
-
-/* --- Player state (kinematic-ish) --- */
-const player = {
-  pos: new THREE.Vector3(0, 1.6, 8),
-  vel: new THREE.Vector3(0,0,0),
-  radius: 0.35,
-  height: 1.6,
-  onGround: false,
-  hp: 100
-};
-
-/* --- Enemy --- */
-const enemy = {
-  pos: new CANNON.Vec3(0, 0.7, -10),
-  size: 0.7,
-  health: 5,
-  mesh: new THREE.Mesh(new THREE.SphereGeometry(0.7,12,12), new THREE.MeshStandardMaterial({color:0xff6666})),
-  shootCD: 0
-};
-enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z);
-scene.add(enemy.mesh);
-
-/* --- Projectiles --- */
-const projectiles = [];
-
-/* --- Weapons & models --- */
-const gltfLoader = new THREE.GLTFLoader();
-const weaponGroup = new THREE.Group();
-camera.add(weaponGroup);
-weaponGroup.position.set(0.25, -0.25, -0.6);
-
-/* placeholders */
-const placeholderAR = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.12,0.16), new THREE.MeshStandardMaterial({color:0x222}));
-const placeholderPistol = new THREE.Mesh(new THREE.BoxGeometry(0.36,0.09,0.12), new THREE.MeshStandardMaterial({color:0x111}));
-const placeholderKatana = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.02,1.0), new THREE.MeshStandardMaterial({color:0x88f0ff,emissive:0x33ccff}));
-
-let models = { ar: null, pistol: null, katana: null };
-
-/* try to load models — failures are caught and we continue */
-function loadModel(url, key){
-  gltfLoader.load(url, (g) => {
-    try{
-      models[key] = g.scene;
-      console.log('Loaded model', key, url);
-    }catch(e){ console.warn('model load parse fail', key, e); }
-  }, undefined, err => {
-    console.warn('Failed to load', key, url, err);
-  });
-}
-loadModel(MODEL_URLS.ar, 'ar');
-loadModel(MODEL_URLS.pistol, 'pistol');
-loadModel(MODEL_URLS.katana, 'katana');
-
-/* weapon metadata */
-const WEAPONS = {
-  ar: { name:'AR', cooldown:0.12, speed:3.6, dmg:1 },
-  pistol: { name:'Pistol', cooldown:0.28, speed:4.6, dmg:1 },
-  katana: { name:'Katana', cooldown:0.5, speed:5.2, dmg:3 }
-};
-let currentWeapon = 'ar';
-let kills = 0;
-const weaponNameEl = document.getElementById('weaponName');
-const killsEl = document.getElementById('kills');
-
-function showMsg(text, ms=1000){ const el = document.getElementById('msg'); el.innerText = text; el.style.display = 'block'; setTimeout(()=>el.style.display='none', ms); }
-function updateHUD(){ weaponNameEl.innerText = currentWeapon.toUpperCase(); killsEl.innerText = kills; document.getElementById('hpText').innerText = Math.max(0, Math.round(player.hp)) + '%'; document.getElementById('hpBar').style.width = Math.max(0, player.hp) + '%'; }
-updateHUD();
-
-/* equip weapon (1/2/3) */
-function equip(name){
-  if(name === 'pistol' && kills < 2){ showMsg('Pistol unlocks at 2 kills'); return; }
-  if(name === 'katana' && kills < 3){ showMsg('Katana unlocks at 3 kills'); return; }
-  currentWeapon = name;
-  // swap model
-  while(weaponGroup.children.length) weaponGroup.remove(weaponGroup.children[0]);
-  if(models[name]){
-    const m = models[name].clone();
-    m.scale.setScalar(0.9);
-    m.position.set(0.03,-0.06,0);
-    weaponGroup.add(m);
-  } else {
-    if(name === 'ar') weaponGroup.add(placeholderAR);
-    if(name === 'pistol') weaponGroup.add(placeholderPistol);
-    if(name === 'katana') weaponGroup.add(placeholderKatana);
-  }
-  updateHUD();
-}
-equip('ar');
-
-/* --- Input handling (fixed WASD mapping) --- */
-const keys = {};
-window.addEventListener('keydown', e=>{
-  keys[e.code] = true;
-  if(e.code === 'KeyE') onE();
-  if(e.code === 'Digit1') equip('ar');
-  if(e.code === 'Digit2') equip('pistol');
-  if(e.code === 'Digit3') equip('katana');
-});
-window.addEventListener('keyup', e=>{ keys[e.code] = false; });
-
-/* Mouse look (protect from huge delta on pointerlock) */
-let yaw = 0, pitch = 0;
-let ignoreMouseUntil = 0;
-const mouseClamp = 400;
-window.addEventListener('mousemove', e=>{
-  if(document.pointerLockElement !== renderer.domElement) return;
-  if(performance.now() < ignoreMouseUntil) return;
-  const dx = Math.max(-mouseClamp, Math.min(mouseClamp, e.movementX));
-  const dy = Math.max(-mouseClamp, Math.min(mouseClamp, e.movementY));
-  yaw -= dx * 0.0026;
-  pitch -= dy * 0.0026;
-  pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, pitch));
-});
-renderer.domElement.addEventListener('click', ()=> renderer.domElement.requestPointerLock());
-document.addEventListener('pointerlockchange', ()=> { ignoreMouseUntil = performance.now() + 40; });
-
-/* Shooting (LMB hitscan) */
-let canShoot = true, shootCD = 0;
-window.addEventListener('mousedown', e=>{
-  if(document.pointerLockElement !== renderer.domElement) return;
-  if(e.button !== 0) return;
-  if(!canShoot) return;
-  if(currentWeapon === 'katana') return;
-  doFire();
-});
-function doFire(){
-  // hitscan toward forward
-  const origin = camera.position.clone();
-  const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
-  const toEnemy = new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z).sub(origin);
-  const proj = toEnemy.dot(dir);
-  if(proj > 0 && proj < 300){
-    const closest = toEnemy.clone().sub(dir.clone().multiplyScalar(proj)).length();
-    if(closest < enemy.size){
-      enemy.health -= WEAPONS[currentWeapon].dmg;
-      if(enemy.health <= 0){ enemy.health = 5; kills++; updateHUD(); enemy.pos.set((Math.random()-0.5)*20, enemy.size, (Math.random()-0.5)*20 - 8); enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z); }
-      // muzzle flash
-      const flash = new THREE.PointLight(0xffee88, 2, 4);
-      const muzzlePos = new THREE.Vector3().setFromMatrixPosition(weaponGroup.matrixWorld);
-      flash.position.copy(muzzlePos);
-      scene.add(flash);
-      setTimeout(()=>scene.remove(flash), 80);
+    // obstacles
+    const obstacles = [];
+    function addObstacle(x,y,z,sx,sy,sz,color){
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), new THREE.MeshStandardMaterial({color}));
+      mesh.position.set(x, y + sy/2, z); scene.add(mesh);
+      const body = new CANNON.Body({ mass:0, shape: new CANNON.Box(new CANNON.Vec3(sx/2, sy/2, sz/2)) });
+      body.position.set(x, y + sy/2, z); world.addBody(body);
+      obstacles.push({mesh, body, hx:sx/2, hy:sy/2, hz:sz/2});
     }
-  }
-  // small recoil animation (pushback z)
-  const start = weaponGroup.position.z;
-  const back = start - 0.06;
-  const t0 = performance.now();
-  function anim(now){
-    const t = Math.min(1, (now - t0)/100);
-    weaponGroup.position.z = start + (back - start) * Math.sin(t * Math.PI);
-    if(t < 1) requestAnimationFrame(anim);
-    else weaponGroup.position.z = 0;
-  }
-  requestAnimationFrame(anim);
+    addObstacle(-6,0,-2,2,1,2,0x8a7d6b);
+    addObstacle(5,0,1,2,1,2,0x8a7d6b);
+    addObstacle(0,0,-6,3,2,1,0x666666);
+    addObstacle(-4,0,6,3,2,1,0x666666);
+    addObstacle(3,0,6,3,1,3,0x7b6f57);
 
-  canShoot = false; shootCD = WEAPONS[currentWeapon].cooldown;
-}
+    // draggable cube (CANNON body + mesh)
+    const cubeSize = 0.8;
+    const cubeMesh = new THREE.Mesh(new THREE.BoxGeometry(cubeSize,cubeSize,cubeSize), new THREE.MeshStandardMaterial({color:0x33c3ff}));
+    scene.add(cubeMesh);
+    const cubeBody = new CANNON.Body({
+      mass: 4,
+      shape: new CANNON.Box(new CANNON.Vec3(cubeSize/2, cubeSize/2, cubeSize/2)),
+      position: new CANNON.Vec3(0,1,2)
+    });
+    world.addBody(cubeBody);
+    let cubeHeld = false;
 
-/* Katana slash (E when not picking cube) implemented in onE() below */
+    // player state (simple kinematic)
+    const player = {
+      pos: new THREE.Vector3(0,1.6,8),
+      vel: new THREE.Vector3(0,0,0),
+      radius: 0.35,
+      height: 1.6,
+      onGround: false,
+      hp: 100
+    };
 
-/* E: pick/release cube or slash */
-function onE(){
-  // raycast from camera to cube
-  const origin = camera.position.clone();
-  const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
-  const toCube = new THREE.Vector3(cubeBody.position.x, cubeBody.position.y, cubeBody.position.z).sub(origin);
-  const proj = toCube.dot(dir);
-  if(proj > 0 && proj < 4.5){
-    const closest = toCube.clone().sub(dir.clone().multiplyScalar(proj)).length();
-    if(closest < cubeSize*0.9){
-      cubeHeld = !cubeHeld;
-      if(cubeHeld){ cubeBody.velocity.setZero(); cubeBody.angularVelocity.setZero(); }
-      return;
+    // enemy
+    const enemy = {
+      pos: new CANNON.Vec3(0,0.7,-10),
+      size: 0.7,
+      health: 5,
+      mesh: new THREE.Mesh(new THREE.SphereGeometry(0.7,12,12), new THREE.MeshStandardMaterial({color:0xff6666})),
+      shootCD: 0
+    };
+    enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z);
+    scene.add(enemy.mesh);
+
+    // projectiles
+    const projectiles = [];
+
+    // weapon visuals parented to camera
+    const weaponRoot = new THREE.Group();
+    camera.add(weaponRoot);
+    weaponRoot.position.set(0.25,-0.25,-0.6);
+
+    // placeholders (used if GLB fails)
+    const placeholderAR = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.12,0.16), new THREE.MeshStandardMaterial({color:0x222}));
+    const placeholderPistol = new THREE.Mesh(new THREE.BoxGeometry(0.36,0.09,0.12), new THREE.MeshStandardMaterial({color:0x111}));
+    const placeholderKatana = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.02,1.0), new THREE.MeshStandardMaterial({color:0x88f0ff,emissive:0x33ccff}));
+
+    // attempt GLTFLoader (defensive)
+    let gltfLoader = null;
+    try {
+      if(typeof THREE.GLTFLoader !== 'undefined') gltfLoader = new THREE.GLTFLoader();
+      else if(typeof THREE !== 'undefined' && THREE.GLTFLoader === undefined && typeof THREE) {
+        // try global loader script (should be available from example include)
+        if(window.THREE && window.THREE.GLTFLoader) gltfLoader = new THREE.GLTFLoader();
+      }
+    } catch(e){
+      console.warn('GLTFLoader unavailable:', e);
+      gltfLoader = null;
     }
-  }
-  // else if katana equip, perform melee slash
-  if(currentWeapon === 'katana'){
-    const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
-    const slashPos = origin.clone().add(fwd.multiplyScalar(1.2));
-    const dist = slashPos.distanceTo(new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z));
-    if(dist < enemy.size + 0.8){ enemy.health -= WEAPONS.katana.dmg; if(enemy.health <= 0){ enemy.health = 5; kills++; updateHUD(); enemy.pos.set((Math.random()-0.5)*20, enemy.size, (Math.random()-0.5)*20 - 8); enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z);} }
-  }
-}
 
-/* Utility: spawn projectile from enemy */
-function spawnEnemyProjectile(origin, dir){
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.12,8,8), new THREE.MeshStandardMaterial({color:0xffff77}));
-  mesh.position.copy(origin);
-  scene.add(mesh);
-  projectiles.push({mesh, vel: dir.clone().multiplyScalar(8), life:4});
-}
+    const models = { ar:null, pistol:null, katana:null };
+    function loadModel(url, key){
+      if(!gltfLoader) return Promise.resolve();
+      return new Promise((res,rej)=>{
+        gltfLoader.load(url, gltf=>{
+          try{ models[key] = gltf.scene; console.log('Loaded', key); }catch(e){ console.warn(e); }
+          res();
+        }, undefined, err=>{
+          console.warn('Model load fail', key, err);
+          res(); // don't reject — fallback to placeholder
+        });
+      });
+    }
 
-/* --- Main loop --- */
-const clock = new THREE.Clock();
-let slideTimer = 0;
-let jumpQueued = false;
+    // Try to load models but don't block startup
+    loadModel(MODEL_PATHS.ar,'ar');
+    loadModel(MODEL_PATHS.pistol,'pistol');
+    loadModel(MODEL_PATHS.katana,'katana');
 
-function update(){
-  const dt = Math.min(0.05, clock.getDelta());
+    // weapon metadata
+    const WEAPONS = {
+      ar: { name:'AR', cooldown:0.12, speed:3.6, dmg:1 },
+      pistol: { name:'Pistol', cooldown:0.28, speed:4.6, dmg:1 },
+      katana: { name:'Katana', cooldown:0.5, speed:5.2, dmg:3 }
+    };
+    let currentWeapon = 'ar';
+    let kills = 0;
 
-  // update camera rotation quaternion from yaw/pitch (single authoritative place)
-  const qp = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), pitch);
-  const qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yaw);
-  camera.quaternion.copy(qy).multiply(qp);
+    // HUD elements
+    const weaponNameEl = document.getElementById('weaponName');
+    const killsEl = document.getElementById('kills'); // created by HUD
+    function updateHUD(){
+      document.getElementById('weaponName').innerText = currentWeapon.toUpperCase();
+      document.getElementById('kills').innerText = kills;
+      document.getElementById('hpText').innerText = Math.max(0, Math.round(player.hp)) + '%';
+      document.getElementById('hpBar').style.width = Math.max(0, player.hp) + '%';
+    }
+    updateHUD();
 
-  // movement: compute forward/right ignoring pitch
-  const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).setY(0).normalize();
-  const right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion).setY(0).normalize();
+    // equip function
+    function equip(name){
+      if(name === 'pistol' && kills < 2){ showMsg('Pistol unlocks at 2 kills'); return; }
+      if(name === 'katana' && kills < 3){ showMsg('Katana unlocks at 3 kills'); return; }
+      currentWeapon = name;
+      // swap model
+      while(weaponRoot.children.length) weaponRoot.remove(weaponRoot.children[0]);
+      if(models[name]){
+        const m = models[name].clone();
+        m.scale.setScalar(0.9);
+        m.position.set(0.03,-0.06,0);
+        weaponRoot.add(m);
+      } else {
+        if(name === 'ar') weaponRoot.add(placeholderAR);
+        if(name === 'pistol') weaponRoot.add(placeholderPistol);
+        if(name === 'katana') weaponRoot.add(placeholderKatana);
+      }
+      updateHUD();
+    }
+    equip('ar'); // default
 
-  // input mapping fixed: W forward, S back, A left, D right
-  const move = new THREE.Vector3();
-  if(keys['KeyW']) move.add(forward);
-  if(keys['KeyS']) move.add(forward.clone().negate());
-  if(keys['KeyA']) move.add(right.clone().negate());
-  if(keys['KeyD']) move.add(right);
-  if(move.length()>0) move.normalize();
+    function showMsg(t,ms=1200){ const el=document.getElementById('msg'); el.innerText=t; el.style.display='block'; setTimeout(()=>el.style.display='none',ms); }
 
-  const baseSpeed = WEAPONS[currentWeapon].speed || 3.6;
-  const sprint = keys['ShiftLeft'] ? 1.9 : 1.0;
-  const speed = baseSpeed * sprint * (slideTimer>0 ? 1.35 : 1.0);
-  player.pos.x += move.x * speed * dt;
-  player.pos.z += move.z * speed * dt;
+    // Input
+    const keys = {};
+    window.addEventListener('keydown', e=>{
+      keys[e.code]=true;
+      if(e.code === 'KeyE') onE();
+      if(e.code === 'Digit1') equip('ar');
+      if(e.code === 'Digit2') equip('pistol');
+      if(e.code === 'Digit3') equip('katana');
+    });
+    window.addEventListener('keyup', e=> keys[e.code]=false);
 
-  // vertical gravity
-  player.vel.y -= 30 * dt;
-  player.pos.y += player.vel.y * dt;
+    // mouse look with small ignore window
+    let yaw = 0, pitch = 0;
+    let ignoreUntil = 0;
+    const mouseClamp = 400;
+    window.addEventListener('mousemove', e=>{
+      if(document.pointerLockElement !== renderer.domElement) return;
+      if(performance.now() < ignoreUntil) return;
+      const dx = Math.max(-mouseClamp, Math.min(mouseClamp, e.movementX));
+      const dy = Math.max(-mouseClamp, Math.min(mouseClamp, e.movementY));
+      yaw -= dx * 0.0026;
+      pitch -= dy * 0.0026;
+      pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, pitch));
+    });
+    renderer.domElement.addEventListener('click', ()=> renderer.domElement.requestPointerLock());
+    document.addEventListener('pointerlockchange', ()=> { ignoreUntil = performance.now() + 40; });
 
-  // ground collision
-  if(player.pos.y < player.height/2){ player.pos.y = player.height/2; player.vel.y = 0; player.onGround = true; } else player.onGround = false;
+    // shooting
+    let canShoot = true, shootCD = 0;
+    window.addEventListener('mousedown', e=>{
+      if(document.pointerLockElement !== renderer.domElement) return;
+      if(e.button !== 0) return;
+      if(!canShoot) return;
+      if(currentWeapon === 'katana') return;
+      fire();
+    });
+    function fire(){
+      const origin = camera.position.clone();
+      const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
+      const toEnemy = new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z).sub(origin);
+      const proj = toEnemy.dot(dir);
+      if(proj > 0 && proj < 300){
+        const closest = toEnemy.clone().sub(dir.clone().multiplyScalar(proj)).length();
+        if(closest < enemy.size){
+          enemy.health -= WEAPONS[currentWeapon].dmg;
+          if(enemy.health <= 0){ enemy.health = 5; kills++; updateHUD(); enemy.pos.set((Math.random()-0.5)*20, enemy.size, (Math.random()-0.5)*20 - 8); enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z); }
+          // muzzle flash
+          const flash = new THREE.PointLight(0xffee88, 2, 4);
+          flash.position.copy(new THREE.Vector3().setFromMatrixPosition(weaponRoot.matrixWorld));
+          scene.add(flash);
+          setTimeout(()=>scene.remove(flash), 80);
+        }
+      }
+      // recoil
+      const start = weaponRoot.position.z;
+      const back = start - 0.06;
+      const t0 = performance.now();
+      function anim(now){
+        const t = Math.min(1, (now - t0)/120);
+        weaponRoot.position.z = start + (back - start) * Math.sin(t * Math.PI);
+        if(t < 1) requestAnimationFrame(anim);
+        else weaponRoot.position.z = 0;
+      }
+      requestAnimationFrame(anim);
+      canShoot = false; shootCD = WEAPONS[currentWeapon].cooldown;
+    }
 
-  // obstacle stand detection (simple)
-  obstacles.forEach(o => {
-    const topY = o.body.position.y + o.body.shapes[0].halfExtents.y;
-    const dx = Math.abs(player.pos.x - o.body.position.x);
-    const dz = Math.abs(player.pos.z - o.body.position.z);
-    if(dx < o.hx + player.radius && dz < o.hz + player.radius){
-      if(player.pos.y <= topY + player.height/2 + 0.2 && player.pos.y >= topY - 0.1){
-        player.pos.y = topY + player.height/2;
-        player.vel.y = 0;
-        player.onGround = true;
+    // E: pickup or katana slash
+    function onE(){
+      const origin = camera.position.clone();
+      const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
+      const toCube = new THREE.Vector3(cubeBody.position.x, cubeBody.position.y, cubeBody.position.z).sub(origin);
+      const proj = toCube.dot(dir);
+      if(proj > 0 && proj < 4.5){
+        const closest = toCube.clone().sub(dir.clone().multiplyScalar(proj)).length();
+        if(closest < cubeSize*0.9){
+          cubeHeld = !cubeHeld;
+          if(cubeHeld){ cubeBody.velocity.set(0,0,0); cubeBody.angularVelocity.set(0,0,0); }
+          return;
+        }
+      }
+      if(currentWeapon === 'katana'){
+        const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
+        const slashPos = camera.position.clone().addScaledVector(fwd, 1.2);
+        if(slashPos.distanceTo(new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z)) < enemy.size + 0.8){
+          enemy.health -= WEAPONS.katana.dmg;
+          if(enemy.health <= 0){ enemy.health = 5; kills++; updateHUD(); enemy.pos.set((Math.random()-0.5)*20, enemy.size, (Math.random()-0.5)*20 - 8); enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z); }
+        }
       }
     }
-  });
 
-  // slide handling
-  if(keys['ControlLeft'] && keys['ShiftLeft'] && player.onGround && slideTimer <= 0){ slideTimer = 0.45; }
-  if(slideTimer > 0){ slideTimer -= dt; }
-
-  // jumping
-  if(keys['Space'] && !jumpQueued){
-    if(player.onGround){ player.vel.y = 8; player.onGround = false; }
-    jumpQueued = true;
-  }
-  if(!keys['Space']) jumpQueued = false;
-
-  // cube hold spring
-  if(cubeHeld){
-    const target = new CANNON.Vec3(
-      camera.position.x - Math.sin(yaw) * 2.0,
-      camera.position.y,
-      camera.position.z - Math.cos(yaw) * 2.0
-    );
-    // spring force
-    const F = new CANNON.Vec3(
-      (target.x - cubeBody.position.x) * 60 - cubeBody.velocity.x * 8,
-      (target.y - cubeBody.position.y) * 60 - cubeBody.velocity.y * 8,
-      (target.z - cubeBody.position.z) * 60 - cubeBody.velocity.z * 8
-    );
-    cubeBody.applyForce(F);
-  }
-
-  // step physics
-  world.step(1/60, dt, 3);
-
-  // sync cube mesh
-  cubeMesh.position.copy(cubeBody.position);
-  cubeMesh.quaternion.copy(cubeBody.quaternion);
-
-  // enemy chase & shoot
-  const playerVec = new THREE.Vector3(player.pos.x, player.pos.y, player.pos.z);
-  const enemyVec = new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z);
-  const toPlayer = playerVec.clone().sub(enemyVec); toPlayer.y = 0;
-  const dist = toPlayer.length();
-  if(dist > 0.3){
-    toPlayer.normalize();
-    enemy.pos.x += toPlayer.x * 1.6 * dt;
-    enemy.pos.z += toPlayer.z * 1.6 * dt;
-    enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z);
-  }
-  if(enemy.shootCD <= 0){
-    if(dist < 18){
-      const dir = playerVec.clone().sub(enemyVec); dir.y = 0; dir.normalize();
-      spawnEnemyProjectile(new THREE.Vector3(enemy.pos.x, enemy.pos.y + 0.4, enemy.pos.z), dir);
-      enemy.shootCD = 2.0;
-    } else enemy.shootCD = 0.2;
-  } else enemy.shootCD -= dt;
-
-  // update projectiles
-  for(let i=projectiles.length-1;i>=0;i--){
-    const p = projectiles[i];
-    p.mesh.position.addScaledVector(p.vel, dt);
-    p.life -= dt;
-    // hit player?
-    const ppos = new THREE.Vector3(player.pos.x, player.pos.y, player.pos.z);
-    if(p.mesh.position.distanceTo(ppos) < player.radius + 0.12){
-      player.hp -= 10;
-      updateHUD();
-      scene.remove(p.mesh); projectiles.splice(i,1); continue;
+    // spawn enemy projectile
+    function spawnEnemyProjectile(origin, dir){
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.12,8,8), new THREE.MeshStandardMaterial({color:0xffff77}));
+      mesh.position.copy(origin);
+      scene.add(mesh);
+      projectiles.push({mesh, vel: dir.clone().multiplyScalar(8), life:4});
     }
-    if(p.life <= 0){ scene.remove(p.mesh); projectiles.splice(i,1); }
-  }
 
-  // shoot cooldown maintenance
-  if(!canShoot){ shootCD -= dt; if(shootCD <= 0){ canShoot = true; shootCD = 0; } }
+    // helpers
+    function updateHUD(){ document.getElementById('weaponName').innerText = currentWeapon.toUpperCase(); document.getElementById('kills').innerText = kills; document.getElementById('hpText').innerText = Math.max(0, Math.round(player.hp)) + '%'; document.getElementById('hpBar').style.width = Math.max(0, player.hp) + '%'; }
 
-  // camera position last
-  camera.position.set(player.pos.x, player.pos.y, player.pos.z);
+    // main loop
+    const clock = new THREE.Clock();
+    let slideTimer = 0;
+    let jumpQueued = false;
 
-  // update HUD
-  updateHUD();
+    function stepPhysics(dt){
+      // cube hold spring
+      if(cubeHeld){
+        const target = new CANNON.Vec3(
+          camera.position.x - Math.sin(yaw) * 2.0,
+          camera.position.y,
+          camera.position.z - Math.cos(yaw) * 2.0
+        );
+        const k = 60, c = 8;
+        const f = new CANNON.Vec3(
+          (target.x - cubeBody.position.x) * k - cubeBody.velocity.x * c,
+          (target.y - cubeBody.position.y) * k - cubeBody.velocity.y * c,
+          (target.z - cubeBody.position.z) * k - cubeBody.velocity.z * c
+        );
+        cubeBody.applyForce(f);
+      }
+      world.step(1/60, dt, 3);
+    }
 
-  renderer.render(scene,camera);
-  requestAnimationFrame(update);
-}
-requestAnimationFrame(update);
+    function update(){
+      const dt = Math.min(0.05, clock.getDelta());
 
-/* helper spawn projectiles from enemy */
-function spawnEnemyProjectile(origin, dir){
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.12,8,8), new THREE.MeshStandardMaterial({color:0xffff77}));
-  mesh.position.copy(origin);
-  scene.add(mesh);
-  projectiles.push({mesh, vel: dir.clone().multiplyScalar(8), life:4});
-}
+      // rotation
+      const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), pitch);
+      const qYaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), yaw);
+      camera.quaternion.copy(qYaw).multiply(qPitch);
 
-/* update HUD init */
-updateHUD();
+      // movement (W forward etc fixed)
+      const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).setY(0).normalize();
+      const right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion).setY(0).normalize();
+      const move = new THREE.Vector3();
+      if(keys['KeyW']) move.add(forward);
+      if(keys['KeyS']) move.add(forward.clone().negate());
+      if(keys['KeyA']) move.add(right.clone().negate());
+      if(keys['KeyD']) move.add(right);
+      if(move.length()>0) move.normalize();
 
-/* dev helper: re-equip after models load attempt */
-setTimeout(()=>{ if(models.ar || models.pistol || models.katana) equip(currentWeapon); }, 2000);
+      const base = WEAPONS[currentWeapon].speed;
+      const sprint = keys['ShiftLeft'] ? 1.9 : 1.0;
+      const speed = base * sprint * (slideTimer > 0 ? 1.35 : 1.0);
+      player.pos.x += move.x * speed * dt;
+      player.pos.z += move.z * speed * dt;
 
-</script>
+      // vertical
+      player.vel.y -= 30 * dt;
+      player.pos.y += player.vel.y * dt;
+
+      // ground collision
+      if(player.pos.y < player.height/2){ player.pos.y = player.height/2; player.vel.y = 0; player.onGround = true; } else player.onGround = false;
+
+      // obstacle stand detection (top)
+      for(const o of obstacles){
+        const topY = o.body.position.y + o.body.shapes[0].halfExtents.y;
+        const dx = Math.abs(player.pos.x - o.body.position.x);
+        const dz = Math.abs(player.pos.z - o.body.position.z);
+        if(dx < o.hx + player.radius && dz < o.hz + player.radius){
+          if(player.pos.y <= topY + player.height/2 + 0.2 && player.pos.y >= topY - 0.1){
+            player.pos.y = topY + player.height/2;
+            player.vel.y = 0;
+            player.onGround = true;
+          }
+        }
+      }
+
+      // slide
+      if(keys['ControlLeft'] && keys['ShiftLeft'] && player.onGround && slideTimer <= 0){ slideTimer = 0.45; }
+      if(slideTimer > 0){ slideTimer -= dt; }
+
+      // jump
+      if(keys['Space'] && !jumpQueued){ if(player.onGround){ player.vel.y = 8; player.onGround = false; } jumpQueued = true; }
+      if(!keys['Space']) jumpQueued = false;
+
+      // physics step
+      stepPhysics(dt);
+
+      // sync cube mesh
+      cubeMesh.position.copy(cubeBody.position);
+      cubeMesh.quaternion.copy(cubeBody.quaternion);
+
+      // enemy chase
+      const pVec = new THREE.Vector3(player.pos.x, player.pos.y, player.pos.z);
+      const eVec = new THREE.Vector3(enemy.pos.x, enemy.pos.y, enemy.pos.z);
+      const toP = pVec.clone().sub(eVec); toP.y = 0;
+      const dist = toP.length();
+      if(dist > 0.3){
+        toP.normalize();
+        enemy.pos.x += toP.x * 1.6 * dt; enemy.pos.z += toP.z * 1.6 * dt;
+        enemy.mesh.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z);
+      }
+      if(enemy.shootCD <= 0){
+        if(dist < 18){
+          const dir = pVec.clone().sub(eVec); dir.y=0; dir.normalize();
+          spawnEnemyProjectile(new THREE.Vector3(enemy.pos.x, enemy.pos.y + 0.4, enemy.pos.z), dir);
+          enemy.shootCD = 2.0;
+        } else enemy.shootCD = 0.2;
+      } else enemy.shootCD -= dt;
+
+      // projectiles
+      for(let i=projectiles.length-1;i>=0;i--){
+        const pr = projectiles[i];
+        pr.mesh.position.addScaledVector(pr.vel, dt);
+        pr.life -= dt;
+        if(pr.mesh.position.distanceTo(new THREE.Vector3(player.pos.x, player.pos.y, player.pos.z)) < player.radius + 0.12){
+          player.hp -= 10; if(player.hp < 0) player.hp = 0; updateHUD();
+          scene.remove(pr.mesh); projectiles.splice(i,1); continue;
+        }
+        if(pr.life <= 0){ scene.remove(pr.mesh); projectiles.splice(i,1); }
+      }
+
+      // shoot cooldown
+      if(!canShoot){ shootCD -= dt; if(shootCD <= 0){ canShoot = true; shootCD = 0; } }
+
+      // camera position
+      camera.position.set(player.pos.x, player.pos.y, player.pos.z);
+
+      updateHUD();
+      renderer.render(scene, camera);
+      requestAnimationFrame(update);
+    }
+
+    function spawnEnemyProjectile(origin, dir){
+      const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.12,8,8), new THREE.MeshStandardMaterial({color:0xffff77}));
+      sphere.position.copy(origin); scene.add(sphere);
+      projectiles.push({mesh:sphere, vel: dir.clone().multiplyScalar(8), life:4});
+    }
+
+    // small auto-equip after models (if they load)
+    setTimeout(()=>{ if(models.ar || models.pistol || models.katana) equip(currentWeapon); }, 2000);
+
+    // start loop
+    update();
+
+    // resize
+    window.addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+  })();
+  </script>
 </body>
 </html>
